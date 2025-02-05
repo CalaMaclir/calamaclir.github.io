@@ -25,27 +25,27 @@
 </head>
 <body>
   <h1>EasyCrypt</h1>
-　鍵はブラウザ内のIndexedDB内に保存されます。ブラウザを閉じても保持されます。</br>
-　鍵生成、暗号化、復号すべての処理はブラウザ内でローカルに処理され、外部との通信は行われません。</br>
+  鍵はブラウザ内の IndexedDB に保存されます。ブラウザを閉じても保持され、すべての処理はローカルで実施されます。
+
   <!-- ファイル暗号化／復号セクション -->
   <section id="fileSection">
     <h2>暗号化／復号の対象ファイル</h2>
     <div id="fileDropArea">ここにファイルをドロップ</div>
     <ul id="fileList"></ul>
-    <!-- 復号ボタンのみ表示（暗号化は下記公開鍵エリアへ移動） -->
     <div class="key-section">
       <h2>復号</h2>
-      秘密鍵は自動選択されます
-    <div>
-      <button id="decryptBtn">復号</button>
+      秘密鍵は IndexedDB から自動選択されます
+      <div>
+        <button id="decryptBtn">復号</button>
+      </div>
     </div>
   </section>
 
-  <!-- 公開鍵選択エリア（暗号化ボタンを含む） -->
+  <!-- 公開鍵インポート（暗号化に使用） -->
   <section id="keyImport">
     <div class="key-section">
       <h2>暗号化</h2>
-      暗号化で使用する公開鍵のファイルを読ませてください
+      暗号化で使用する公開鍵のファイルを読み込んでください
       <h3>公開鍵選択 (.pubkey XML)</h3>
       <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
       <!-- 暗号化ボタンはここに配置 -->
@@ -54,37 +54,46 @@
     </div>
   </section>
 
+  <!-- 秘密鍵インポート -->
+  <section id="privKeyImport">
+    <div class="key-section">
+      <h2>秘密鍵インポート (.pvtkey XML)</h2>
+      <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
+      <ul id="privKeyList"></ul>
+    </div>
+  </section>
+
   <!-- 鍵管理セクション -->
   <section id="keyManagement">
     <div class="key-section">
-    <h2>鍵管理</h2>
-    <div>
-      <label for="keyNameInput">鍵名 (英数字、_, -, @, . のみ): </label>
-      <input type="text" id="keyNameInput" placeholder="例: MyKey01">
-      <button id="generateKeyButton">鍵生成</button>
-    </div>
-    <div>
-      <h3>鍵一覧</h3>
-      <table id="keyTable">
-        <thead>
-          <tr>
-            <th>鍵名</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div id="exportArea"></div>
+      <h2>鍵管理</h2>
+      <div>
+        <label for="keyNameInput">鍵名 (英数字、_, -, @, . のみ): </label>
+        <input type="text" id="keyNameInput" placeholder="例: MyKey01">
+        <button id="generateKeyButton">鍵生成</button>
+      </div>
+      <div>
+        <h3>鍵一覧</h3>
+        <table id="keyTable">
+          <thead>
+            <tr>
+              <th>鍵名</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="exportArea"></div>
     </div>
   </section>
 
   <script>
     // ── グローバル変数 ──
     let db;
-    // キーペア（自前生成したもの）の管理用オブジェクト（鍵名をキー）
+    // 自前生成またはインポートした鍵ペアの管理オブジェクト（鍵名をキー）
     const keyStore = {};
-    // 暗号処理用にインポート済みの鍵リスト（ファイルインポートまたはDB復元）
+    // 暗号処理用にインポート済みの鍵リスト（ファイルインポートまたは DB 復元）
     const importedPublicKeys = [];   // { name, modulus, cryptoKey }
     const importedPrivateKeys = [];  // { name, modulus, cryptoKey }
     // 処理対象ファイルリスト
@@ -257,6 +266,59 @@
       return { name: fileName, modulus: modulus, cryptoKey: cryptoKey };
     }
 
+    // ── XML 形式の秘密鍵インポート ──
+    async function importPrivateKeyFromXml(xmlString, fileName) {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+      const modulus = getXmlTagContent(xmlDoc, "Modulus");
+      const exponent = getXmlTagContent(xmlDoc, "Exponent");
+      const d = getXmlTagContent(xmlDoc, "D");
+      const p = getXmlTagContent(xmlDoc, "P");
+      const q = getXmlTagContent(xmlDoc, "Q");
+      const dp = getXmlTagContent(xmlDoc, "DP");
+      const dq = getXmlTagContent(xmlDoc, "DQ");
+      const inverseQ = getXmlTagContent(xmlDoc, "InverseQ");
+      if (!modulus || !exponent || !d || !p || !q || !dp || !dq || !inverseQ) {
+        throw new Error("秘密鍵XMLに必要な要素が見つかりません");
+      }
+      // 秘密鍵の JWK
+      const jwkPrivate = {
+        kty: "RSA",
+        n: base64ToBase64Url(modulus),
+        e: base64ToBase64Url(exponent),
+        d: base64ToBase64Url(d),
+        p: base64ToBase64Url(p),
+        q: base64ToBase64Url(q),
+        dp: base64ToBase64Url(dp),
+        dq: base64ToBase64Url(dq),
+        qi: base64ToBase64Url(inverseQ),
+        ext: true
+      };
+      const privateCryptoKey = await crypto.subtle.importKey(
+        "jwk", jwkPrivate,
+        { name: "RSA-OAEP", hash: "SHA-1" },
+        true, ["decrypt"]
+      );
+      // 秘密鍵から公開鍵情報を生成
+      const jwkPublic = {
+        kty: "RSA",
+        n: base64ToBase64Url(modulus),
+        e: base64ToBase64Url(exponent),
+        ext: true
+      };
+      const publicCryptoKey = await crypto.subtle.importKey(
+        "jwk", jwkPublic,
+        { name: "RSA-OAEP", hash: "SHA-1" },
+        true, ["encrypt"]
+      );
+      return {
+        name: fileName,
+        modulus: modulus,
+        publicKey: publicCryptoKey,
+        privateKey: privateCryptoKey
+      };
+    }
+
     // ── ファイルドラッグ＆ドロップ処理 ──
     const fileDropArea = document.getElementById('fileDropArea');
     const fileListElem = document.getElementById('fileList');
@@ -297,6 +359,34 @@
           await storePartialKey(pubKey.name, jwk, "public");
         } catch(err) {
           alert("公開鍵 " + file.name + " のインポートエラー: " + err.message);
+        }
+      }
+      e.target.value = "";
+    });
+
+    // ── 秘密鍵ファイル入力（インポート＆DB保存、公開鍵自動生成） ──
+    const privKeyListElem = document.getElementById('privKeyList');
+    document.getElementById('privKeyInput').addEventListener('change', async (e) => {
+      const files = e.target.files;
+      for (let file of files) {
+        const text = await file.text();
+        try {
+          const keyPair = await importPrivateKeyFromXml(text, file.name);
+          // インポートした秘密鍵から生成された公開鍵・秘密鍵を配列に登録
+          importedPublicKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.publicKey });
+          importedPrivateKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.privateKey });
+          // キーペア管理オブジェクトにも登録
+          keyStore[keyPair.name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
+          const li = document.createElement('li');
+          li.textContent = keyPair.name;
+          privKeyListElem.appendChild(li);
+          // DB へ保存（公開鍵と秘密鍵の両方）
+          const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+          const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+          await storeKeyPair(keyPair.name, publicJwk, privateJwk);
+          refreshKeyList();
+        } catch(err) {
+          alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
         }
       }
       e.target.value = "";
@@ -476,7 +566,7 @@
       }
     }
 
-    // 鍵一覧テーブルの更新（削除ボタンを追加、テストボタンは削除）
+    // 鍵一覧テーブルの更新（削除ボタンを追加）
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
@@ -510,7 +600,7 @@
       }
     }
 
-    // JWK から XML 形式へ変換
+    // JWK から XML 形式への変換
     function convertPublicJwkToXml(jwk) {
       const modulus = base64UrlToBase64(jwk.n);
       const exponent = base64UrlToBase64(jwk.e);
@@ -570,15 +660,12 @@
 
     async function deleteKey(name) {
       if (!confirm("鍵 " + name + " を削除してよろしいですか？")) return;
-      // IndexedDB から削除
       try {
         await deleteKeyRecord(name);
       } catch (e) {
         console.error("DB削除エラー", e);
       }
-      // 内部管理オブジェクトから削除
       delete keyStore[name];
-      // インポート済み配列から削除
       const pubIndex = importedPublicKeys.findIndex(k => k.name === name);
       if (pubIndex >= 0) { importedPublicKeys.splice(pubIndex, 1); }
       const privIndex = importedPrivateKeys.findIndex(k => k.name === name);
