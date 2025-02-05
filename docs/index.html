@@ -27,7 +27,6 @@
   <h1>EasyCrypt</h1>
 　鍵はブラウザ内のIndexedDB内に保存されます。ブラウザを閉じても保持されます。</br>
 　鍵生成、暗号化、復号すべての処理はブラウザ内でローカルに処理され、外部との通信は行われません。</br>
-
   <!-- ファイル暗号化／復号セクション -->
   <section id="fileSection">
     <h2>暗号化／復号の対象ファイル</h2>
@@ -37,6 +36,7 @@
     <div class="key-section">
       <h2>復号</h2>
       秘密鍵は自動選択されます
+    <div>
       <button id="decryptBtn">復号</button>
     </div>
   </section>
@@ -476,7 +476,7 @@
       }
     }
 
-    // 鍵一覧テーブルの更新（削除ボタンを追加）
+    // 鍵一覧テーブルの更新（削除ボタンを追加、テストボタンは削除）
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
@@ -494,10 +494,6 @@
         exportPrivBtn.textContent = "秘密鍵エクスポート";
         exportPrivBtn.onclick = () => exportKey(name, "private");
 
-        const testBtn = document.createElement("button");
-        testBtn.textContent = "テスト";
-        testBtn.onclick = () => testKeyPair(name);
-
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name);
@@ -505,8 +501,6 @@
         tdOps.appendChild(exportPubBtn);
         tdOps.appendChild(document.createTextNode("　"));
         tdOps.appendChild(exportPrivBtn);
-        tdOps.appendChild(document.createTextNode("　"));
-        tdOps.appendChild(testBtn);
         tdOps.appendChild(document.createTextNode("　"));
         tdOps.appendChild(deleteBtn);
 
@@ -571,24 +565,6 @@
       } catch (e) {
         console.error(e);
         alert("エクスポートエラー: " + e);
-      }
-    }
-
-    async function testKeyPair(name) {
-      const keyPair = keyStore[name];
-      if (!keyPair || !keyPair.publicKey || !keyPair.privateKey) {
-        alert("鍵ペアが不完全です");
-        return;
-      }
-      const data = new TextEncoder().encode("TestEncryption");
-      try {
-        const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, keyPair.publicKey, data);
-        const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, keyPair.privateKey, encrypted);
-        const result = new TextDecoder().decode(decrypted);
-        alert(result === "TestEncryption" ? "暗号化／復号テスト成功" : "暗号化／復号テスト失敗");
-      } catch (e) {
-        console.error(e);
-        alert("暗号化／復号テストエラー: " + e);
       }
     }
 
