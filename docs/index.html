@@ -456,7 +456,7 @@
       const blob = new Blob([finalData], { type: "application/octet-stream" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = file.name + ".enc";
+      a.download = file.name + ".easycrypted";
       a.click();
     }
 
