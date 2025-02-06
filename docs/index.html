@@ -26,7 +26,7 @@
 <body>
   <h1>EasyCrypt</h1>
   <div>鍵はブラウザ内の IndexedDB に保存されます。ブラウザを閉じても保持され、すべての処理はローカルで実施されます。</div>
-　<div>つかいかたは<a href="https://note.com/maclir_cala/n/n1837fd391ede" target=_blank>ブラウザ版：公開鍵暗号を使用した暗号化/復号のコードを実装しました</a>をごらんください。</div>
+  <div>つかいかたは<a href="https://note.com/maclir_cala/n/n1837fd391ede" target=_blank>ブラウザ版：公開鍵暗号を使用した暗号化/復号のコードを実装しました</a>をごらんください。</div>
 
   <!-- ファイル暗号化／復号セクション -->
   <section id="fileSection">
@@ -49,7 +49,6 @@
       暗号化で使用する公開鍵のファイルを読み込んでください
       <h3>公開鍵選択 (.pubkey XML)</h3>
       <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
-      <!-- 暗号化ボタンはここに配置 -->
       <button id="encryptBtn">暗号化</button>
       <ul id="pubKeyList"></ul>
     </div>
@@ -90,15 +89,19 @@
   </section>
 
   <script>
+    // ── 定数の定義 ──
+    const RSA_ALGORITHM = "RSA-OAEP";
+    const RSA_HASH = "SHA-256";
+    const AES_ALGORITHM = "AES-GCM";
+    const AES_KEY_LENGTH = 256;
+    const AES_IV_LENGTH = 12;
+
     // ── グローバル変数 ──
     let db;
-    // 自前生成またはインポートした鍵ペアの管理オブジェクト（鍵名をキー）
-    const keyStore = {};
-    // 暗号処理用にインポート済みの鍵リスト（ファイルインポートまたは DB 復元）
+    const keyStore = {}; // 鍵名をキーとする鍵ペアオブジェクト
     const importedPublicKeys = [];   // { name, modulus, cryptoKey }
     const importedPrivateKeys = [];  // { name, modulus, cryptoKey }
-    // 処理対象ファイルリスト（ドラッグ＆ドロップされたファイル）
-    const filesToProcess = [];
+    const filesToProcess = [];       // ドラッグ＆ドロップされたファイル
 
     // ── IndexedDB 初期化と操作 ──
     function initDB() {
@@ -182,7 +185,7 @@
           if (record.publicKeyJwk) {
             const pubKey = await crypto.subtle.importKey(
               "jwk", record.publicKeyJwk,
-              { name: "RSA-OAEP", hash: "SHA-1" },
+              { name: RSA_ALGORITHM, hash: RSA_HASH },
               true, ["encrypt"]
             );
             const modulus = base64UrlToBase64(record.publicKeyJwk.n);
@@ -191,7 +194,7 @@
           if (record.privateKeyJwk) {
             const privKey = await crypto.subtle.importKey(
               "jwk", record.privateKeyJwk,
-              { name: "RSA-OAEP", hash: "SHA-1" },
+              { name: RSA_ALGORITHM, hash: RSA_HASH },
               true, ["decrypt"]
             );
             const modulus = record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "";
@@ -200,12 +203,12 @@
           if (record.publicKeyJwk && record.privateKeyJwk) {
             const pubKey = await crypto.subtle.importKey(
               "jwk", record.publicKeyJwk,
-              { name: "RSA-OAEP", hash: "SHA-1" },
+              { name: RSA_ALGORITHM, hash: RSA_HASH },
               true, ["encrypt"]
             );
             const privKey = await crypto.subtle.importKey(
               "jwk", record.privateKeyJwk,
-              { name: "RSA-OAEP", hash: "SHA-1" },
+              { name: RSA_ALGORITHM, hash: RSA_HASH },
               true, ["decrypt"]
             );
             keyStore[record.name] = { publicKey: pubKey, privateKey: privKey };
@@ -261,7 +264,7 @@
       const jwk = { kty: "RSA", n: n, e: e, ext: true };
       const cryptoKey = await crypto.subtle.importKey(
         "jwk", jwk,
-        { name: "RSA-OAEP", hash: "SHA-1" },
+        { name: RSA_ALGORITHM, hash: RSA_HASH },
         true, ["encrypt"]
       );
       return { name: fileName, modulus: modulus, cryptoKey: cryptoKey };
@@ -282,7 +285,6 @@
       if (!modulus || !exponent || !d || !p || !q || !dp || !dq || !inverseQ) {
         throw new Error("秘密鍵XMLに必要な要素が見つかりません");
       }
-      // 秘密鍵の JWK
       const jwkPrivate = {
         kty: "RSA",
         n: base64ToBase64Url(modulus),
@@ -297,10 +299,9 @@
       };
       const privateCryptoKey = await crypto.subtle.importKey(
         "jwk", jwkPrivate,
-        { name: "RSA-OAEP", hash: "SHA-1" },
+        { name: RSA_ALGORITHM, hash: RSA_HASH },
         true, ["decrypt"]
       );
-      // 秘密鍵から公開鍵情報を生成
       const jwkPublic = {
         kty: "RSA",
         n: base64ToBase64Url(modulus),
@@ -309,7 +310,7 @@
       };
       const publicCryptoKey = await crypto.subtle.importKey(
         "jwk", jwkPublic,
-        { name: "RSA-OAEP", hash: "SHA-1" },
+        { name: RSA_ALGORITHM, hash: RSA_HASH },
         true, ["encrypt"]
       );
       return {
@@ -355,7 +356,6 @@
           const li = document.createElement('li');
           li.textContent = pubKey.name;
           pubKeyListElem.appendChild(li);
-          // DB へ保存（公開鍵のみ）
           const jwk = await crypto.subtle.exportKey("jwk", pubKey.cryptoKey);
           await storePartialKey(pubKey.name, jwk, "public");
         } catch(err) {
@@ -372,25 +372,20 @@
       for (let file of files) {
         const text = await file.text();
         try {
-          // 鍵名としてファイル名から ".pvtkey" を除去（大文字小文字は無視）
           let keyName = file.name;
           if (keyName.toLowerCase().endsWith(".pvtkey")) {
             keyName = keyName.slice(0, -7);
           }
           const keyPair = await importPrivateKeyFromXml(text, keyName);
-          // インポートした秘密鍵から生成された公開鍵・秘密鍵を登録
           importedPublicKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.publicKey });
           importedPrivateKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.privateKey });
           keyStore[keyPair.name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
-          // 表示用リストに追加（必要に応じてコメントアウト可）
           const li = document.createElement('li');
           li.textContent = keyPair.name;
           privKeyListElem.appendChild(li);
-          // DB へ保存（公開鍵と秘密鍵の両方）
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(keyPair.name, publicJwk, privateJwk);
-          // 秘密鍵ファイルがインポートされたら、ファイル一覧から当該ファイル名のエントリを削除
           removeFileFromFileList(file.name);
           refreshKeyList();
         } catch(err) {
@@ -402,14 +397,12 @@
 
     // ── ファイル一覧から特定のファイルを削除する関数 ──
     function removeFileFromFileList(fileName) {
-      // ファイル一覧の li 要素を削除
       const items = fileListElem.getElementsByTagName("li");
       for (let i = items.length - 1; i >= 0; i--) {
         if (items[i].textContent === fileName) {
           items[i].remove();
         }
       }
-      // filesToProcess 配列からも削除
       for (let i = filesToProcess.length - 1; i >= 0; i--) {
         if (filesToProcess[i].name === fileName) {
           filesToProcess.splice(i, 1);
@@ -419,10 +412,12 @@
 
     // ── ファイル暗号化処理 ──
     async function encryptFile(file) {
-      // AES-CBC 用鍵と IV 生成
-      const aesKey = await crypto.subtle.generateKey({ name: "AES-CBC", length: 256 }, true, ["encrypt", "decrypt"]);
+      const aesKey = await crypto.subtle.generateKey(
+        { name: AES_ALGORITHM, length: AES_KEY_LENGTH },
+        true, ["encrypt", "decrypt"]
+      );
       const aesKeyRaw = new Uint8Array(await crypto.subtle.exportKey("raw", aesKey));
-      const iv = window.crypto.getRandomValues(new Uint8Array(16));
+      const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
 
       if (importedPublicKeys.length === 0) {
         alert("暗号化のために公開鍵がインポートされていません。");
@@ -431,7 +426,7 @@
       const rsaEntries = [];
       for (let pub of importedPublicKeys) {
         try {
-          const encKeyBuffer = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, pub.cryptoKey, aesKeyRaw);
+          const encKeyBuffer = await crypto.subtle.encrypt({ name: RSA_ALGORITHM }, pub.cryptoKey, aesKeyRaw);
           rsaEntries.push({ modulus: pub.modulus, encKey: new Uint8Array(encKeyBuffer) });
         } catch (err) {
           console.error("RSA暗号化失敗: ", err);
@@ -445,7 +440,7 @@
       const encoder = new TextEncoder();
       const fileNameBytes = encoder.encode(file.name);
       const payloadPlain = concatUint8Arrays([writeInt32LE(fileNameBytes.length), fileNameBytes, fileBuffer]);
-      const payloadEnc = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv: iv }, aesKey, payloadPlain));
+      const payloadEnc = new Uint8Array(await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadPlain));
       const parts = [];
       parts.push(writeInt32LE(rsaEntries.length));
       rsaEntries.forEach(entry => {
@@ -465,7 +460,7 @@
       a.click();
     }
 
-    // ── ファイル復号処理（秘密鍵は IndexedDB から自動選択） ──
+    // ── ファイル復号処理 ──
     async function decryptFile(file) {
       if (importedPrivateKeys.length === 0) {
         alert("復号のための秘密鍵が存在しません。");
@@ -490,18 +485,18 @@
         const encKey = fileBuffer.slice(offset, offset + encKeyLen); offset += encKeyLen;
         rsaEntries.push({ modulus: modulus, encKey: encKey });
       }
-      if (offset + 16 > fileBuffer.length) {
+      if (offset + AES_IV_LENGTH > fileBuffer.length) {
         alert("ファイルが不正です。");
         return;
       }
-      const iv = fileBuffer.slice(offset, offset + 16); offset += 16;
+      const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH); offset += AES_IV_LENGTH;
       const payloadEnc = fileBuffer.slice(offset);
       let aesKeyRaw, found = false;
       for (let entry of rsaEntries) {
         for (let priv of importedPrivateKeys) {
           if (priv.modulus === entry.modulus) {
             try {
-              aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: "RSA-OAEP" }, priv.cryptoKey, entry.encKey));
+              aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: RSA_ALGORITHM }, priv.cryptoKey, entry.encKey));
               found = true;
               break;
             } catch (err) {
@@ -515,10 +510,10 @@
         alert("一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。");
         return;
       }
-      const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: "AES-CBC" }, true, ["decrypt"]);
+      const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
       let payloadPlainBuffer;
       try {
-        payloadPlainBuffer = await crypto.subtle.decrypt({ name: "AES-CBC", iv: iv }, aesKey, payloadEnc);
+        payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
       } catch (err) {
         alert("AES復号に失敗しました: " + err.message);
         return;
@@ -541,7 +536,6 @@
     }
 
     // ── ボタン押下時の処理 ──
-    // 復号ボタン
     document.getElementById('decryptBtn').addEventListener('click', () => {
       if (filesToProcess.length === 0) {
         alert("復号するファイルがありません。");
@@ -553,7 +547,6 @@
       fileDropArea.textContent = "ここにファイルをドロップ";
     });
 
-    // 公開鍵エリア内の暗号化ボタン
     document.getElementById('encryptBtn').addEventListener('click', () => {
       if (filesToProcess.length === 0) {
         alert("暗号化するファイルがありません。");
@@ -566,13 +559,12 @@
     });
 
     // ── 鍵管理機能 ──
-    // 鍵生成（RSA-OAEP 4096bit, SHA-1）
     async function generateKeyPair(name) {
       const algorithm = {
-        name: "RSA-OAEP",
+        name: RSA_ALGORITHM,
         modulusLength: 4096,
         publicExponent: new Uint8Array([1, 0, 1]),
-        hash: { name: "SHA-1" }
+        hash: { name: RSA_HASH }
       };
       try {
         const keyPair = await crypto.subtle.generateKey(algorithm, true, ["encrypt", "decrypt"]);
@@ -591,7 +583,6 @@
       }
     }
 
-    // 鍵一覧テーブルの更新（削除ボタンを追加）
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
@@ -625,7 +616,6 @@
       }
     }
 
-    // JWK から XML 形式への変換
     function convertPublicJwkToXml(jwk) {
       const modulus = base64UrlToBase64(jwk.n);
       const exponent = base64UrlToBase64(jwk.e);
@@ -699,7 +689,6 @@
       refreshKeyList();
     }
 
-    // 鍵生成ボタンのイベント登録
     document.getElementById("generateKeyButton").addEventListener("click", async function() {
       const keyName = document.getElementById("keyNameInput").value.trim();
       const regex = /^[A-Za-z0-9_\-@\.]+$/;
