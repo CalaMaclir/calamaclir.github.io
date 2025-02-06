@@ -32,6 +32,8 @@
   <section id="fileSection">
     <h2>暗号化／復号の対象ファイル</h2>
     <div id="fileDropArea">ここにファイルをドロップ</div>
+    <!-- ファイル選択ボタンを追加 -->
+    <input type="file" id="fileSelect" multiple style="margin-top:10px;">
     <ul id="fileList"></ul>
     <div class="key-section">
       <h2>復号</h2>
@@ -101,7 +103,7 @@
     const keyStore = {}; // 鍵名をキーとする鍵ペアオブジェクト
     const importedPublicKeys = [];   // { name, modulus, cryptoKey }
     const importedPrivateKeys = [];  // { name, modulus, cryptoKey }
-    const filesToProcess = [];       // ドラッグ＆ドロップされたファイル
+    const filesToProcess = [];       // ドラッグ＆ドロップまたはファイル選択されたファイル
 
     // ── IndexedDB 初期化と操作 ──
     function initDB() {
@@ -336,6 +338,17 @@
       e.preventDefault();
       fileDropArea.style.borderColor = "#888";
       const files = e.dataTransfer.files;
+      for (let file of files) {
+        filesToProcess.push(file);
+        const li = document.createElement('li');
+        li.textContent = file.name;
+        fileListElem.appendChild(li);
+      }
+    });
+
+    // ── ファイル選択ボタン処理 ──
+    document.getElementById('fileSelect').addEventListener('change', (e) => {
+      const files = e.target.files;
       for (let file of files) {
         filesToProcess.push(file);
         const li = document.createElement('li');
