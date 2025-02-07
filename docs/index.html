@@ -116,10 +116,15 @@
 
     // ── グローバル変数 ──
     let db;
-    const keyStore = {}; // 鍵名をキーとする鍵ペアオブジェクト
+    const keyStore = {}; // 鍵名をキーとする鍵ペアオブジェクト（公開鍵・秘密鍵はセット）
     const importedPublicKeys = [];   // { name, modulus, cryptoKey }
     const importedPrivateKeys = [];  // { name, modulus, cryptoKey }
     const filesToProcess = [];       // ドラッグ＆ドロップまたはファイル選択されたファイル
+
+    // ── exportArea クリア用の補助関数 ──
+    function clearExportArea() {
+      document.getElementById("exportArea").innerHTML = "";
+    }
 
     // ── IndexedDB 初期化と操作 ──
     function initDB() {
@@ -372,10 +377,19 @@
         const text = await file.text();
         try {
           const pubKey = await importPublicKeyFromXml(text, file.name);
-          importedPublicKeys.push(pubKey);
-          const li = document.createElement('li');
-          li.textContent = pubKey.name;
-          pubKeyListElem.appendChild(li);
+          // 同名の鍵ペアが既に存在する場合は上書き
+          if (!keyStore[pubKey.name]) { 
+            keyStore[pubKey.name] = { publicKey: pubKey.cryptoKey, privateKey: null };
+            importedPublicKeys.push(pubKey);
+            const li = document.createElement('li');
+            li.textContent = pubKey.name;
+            pubKeyListElem.appendChild(li);
+          } else {
+            keyStore[pubKey.name].publicKey = pubKey.cryptoKey;
+            const idx = importedPublicKeys.findIndex(k => k.name === pubKey.name);
+            if (idx >= 0) { importedPublicKeys[idx] = pubKey; }
+            else { importedPublicKeys.push(pubKey); }
+          }
           const jwk = await crypto.subtle.exportKey("jwk", pubKey.cryptoKey);
           await storePartialKey(pubKey.name, jwk, "public");
         } catch(err) {
@@ -397,17 +411,36 @@
             keyName = keyName.slice(0, -7);
           }
           const keyPair = await importPrivateKeyFromXml(text, keyName);
-          importedPublicKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.publicKey });
-          importedPrivateKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.privateKey });
-          keyStore[keyPair.name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
-          const li = document.createElement('li');
-          li.textContent = keyPair.name;
-          privKeyListElem.appendChild(li);
+          // 鍵ペアは１エントリーとして管理する
+          if (!keyStore[keyPair.name]) {
+            keyStore[keyPair.name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
+            importedPublicKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.publicKey });
+            importedPrivateKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.privateKey });
+            const li = document.createElement('li');
+            li.textContent = keyPair.name;
+            privKeyListElem.appendChild(li);
+          } else {
+            keyStore[keyPair.name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey };
+            const pubIndex = importedPublicKeys.findIndex(k => k.name === keyPair.name);
+            if (pubIndex >= 0) {
+              importedPublicKeys[pubIndex] = { name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.publicKey };
+            } else {
+              importedPublicKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.publicKey });
+            }
+            const privIndex = importedPrivateKeys.findIndex(k => k.name === keyPair.name);
+            if (privIndex >= 0) {
+              importedPrivateKeys[privIndex] = { name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.privateKey };
+            } else {
+              importedPrivateKeys.push({ name: keyPair.name, modulus: keyPair.modulus, cryptoKey: keyPair.privateKey });
+            }
+          }
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(keyPair.name, publicJwk, privateJwk);
           removeFileFromFileList(file.name);
           refreshKeyList();
+          // 秘密鍵インポート後はエクスポート表示領域をクリア
+          clearExportArea();
         } catch(err) {
           alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
         }
@@ -482,77 +515,91 @@
 
     // ── ファイル復号処理 ──
     async function decryptFile(file) {
-      if (importedPrivateKeys.length === 0) {
-        alert("復号のための秘密鍵が存在しません。");
-        return;
-      }
-      const fileBuffer = new Uint8Array(await file.arrayBuffer());
-      const view = new DataView(fileBuffer.buffer);
-      let offset = 0;
-      if (fileBuffer.length < 4) {
-        alert("ファイルが不正です。");
-        return;
-      }
-      const entryCount = readInt32LE(view, offset);
-      offset += 4;
-      const rsaEntries = [];
-      const decoder = new TextDecoder();
-      for (let i = 0; i < entryCount; i++) {
-        const modLen = readInt32LE(view, offset); offset += 4;
-        const modBytes = fileBuffer.slice(offset, offset + modLen); offset += modLen;
-        const modulus = decoder.decode(modBytes);
-        const encKeyLen = readInt32LE(view, offset); offset += 4;
-        const encKey = fileBuffer.slice(offset, offset + encKeyLen); offset += encKeyLen;
-        rsaEntries.push({ modulus: modulus, encKey: encKey });
-      }
-      if (offset + AES_IV_LENGTH > fileBuffer.length) {
-        alert("ファイルが不正です。");
-        return;
-      }
-      const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH); offset += AES_IV_LENGTH;
-      const payloadEnc = fileBuffer.slice(offset);
-      let aesKeyRaw, found = false;
-      for (let entry of rsaEntries) {
-        for (let priv of importedPrivateKeys) {
-          if (priv.modulus === entry.modulus) {
-            try {
-              aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: RSA_ALGORITHM }, priv.cryptoKey, entry.encKey));
-              found = true;
-              break;
-            } catch (err) {
-              console.error("RSA復号エラー: ", err);
+      try {
+        if (importedPrivateKeys.length === 0) {
+          throw new Error("復号のための秘密鍵が存在しません。");
+        }
+        const fileBuffer = new Uint8Array(await file.arrayBuffer());
+        const view = new DataView(fileBuffer.buffer);
+        let offset = 0;
+        if (fileBuffer.length < 4) {
+          throw new Error("ファイルが不正です。");
+        }
+        const entryCount = readInt32LE(view, offset);
+        offset += 4;
+        const rsaEntries = [];
+        const decoder = new TextDecoder();
+        for (let i = 0; i < entryCount; i++) {
+          if (offset + 4 > fileBuffer.length) {
+            throw new Error("ファイルが不正です。");
+          }
+          const modLen = readInt32LE(view, offset);
+          offset += 4;
+          if (offset + modLen > fileBuffer.length) {
+            throw new Error("ファイルが不正です。");
+          }
+          const modBytes = fileBuffer.slice(offset, offset + modLen); offset += modLen;
+          const modulus = decoder.decode(modBytes);
+          if (offset + 4 > fileBuffer.length) {
+            throw new Error("ファイルが不正です。");
+          }
+          const encKeyLen = readInt32LE(view, offset); offset += 4;
+          if (offset + encKeyLen > fileBuffer.length) {
+            throw new Error("ファイルが不正です。");
+          }
+          const encKey = fileBuffer.slice(offset, offset + encKeyLen); offset += encKeyLen;
+          rsaEntries.push({ modulus: modulus, encKey: encKey });
+        }
+        if (offset + AES_IV_LENGTH > fileBuffer.length) {
+          throw new Error("ファイルが不正です。");
+        }
+        const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH); offset += AES_IV_LENGTH;
+        const payloadEnc = fileBuffer.slice(offset);
+        let aesKeyRaw, found = false;
+        for (let entry of rsaEntries) {
+          for (let priv of importedPrivateKeys) {
+            if (priv.modulus === entry.modulus) {
+              try {
+                aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: RSA_ALGORITHM }, priv.cryptoKey, entry.encKey));
+                found = true;
+                break;
+              } catch (err) {
+                // 各鍵での復号エラーは無視して次を試す
+              }
             }
           }
+          if (found) break;
         }
-        if (found) break;
-      }
-      if (!found || !aesKeyRaw) {
-        alert("一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。");
-        return;
-      }
-      const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
-      let payloadPlainBuffer;
-      try {
-        payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
+        if (!found || !aesKeyRaw) {
+          throw new Error("一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。");
+        }
+        const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
+        let payloadPlainBuffer;
+        try {
+          payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
+        } catch (err) {
+          throw new Error("AES復号に失敗しました: " + err.message);
+        }
+        const payloadPlain = new Uint8Array(payloadPlainBuffer);
+        const dv = new DataView(payloadPlain.buffer);
+        if (payloadPlain.length < 4) {
+          throw new Error("復号結果が不正です。");
+        }
+        const fnameLen = dv.getInt32(0, true);
+        if (4 + fnameLen > payloadPlain.length) {
+          throw new Error("復号結果が不正です。");
+        }
+        const fnameBytes = payloadPlain.slice(4, 4 + fnameLen);
+        const originalFileName = decoder.decode(fnameBytes);
+        const fileContent = payloadPlain.slice(4 + fnameLen);
+        const blob = new Blob([fileContent], { type: "application/octet-stream" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = originalFileName;
+        a.click();
       } catch (err) {
-        alert("AES復号に失敗しました: " + err.message);
-        return;
+        alert("復号エラー: " + err.message);
       }
-      const payloadPlain = new Uint8Array(payloadPlainBuffer);
-      const dv = new DataView(payloadPlain.buffer);
-      const fnameLen = dv.getInt32(0, true);
-      if (4 + fnameLen > payloadPlain.length) {
-        alert("復号結果が不正です。");
-        return;
-      }
-      const fnameBytes = payloadPlain.slice(4, 4 + fnameLen);
-      const originalFileName = decoder.decode(fnameBytes);
-      const fileContent = payloadPlain.slice(4 + fnameLen);
-      const blob = new Blob([fileContent], { type: "application/octet-stream" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = originalFileName;
-      a.click();
     }
 
     // ── ボタン押下時の処理 ──
@@ -565,6 +612,8 @@
       filesToProcess.length = 0;
       fileListElem.innerHTML = "";
       fileDropArea.textContent = "ここにファイルをドロップ";
+      // 暗号化／復号後は公開鍵ファイル選択情報もクリア
+      pubKeyListElem.innerHTML = "";
     });
 
     document.getElementById('encryptBtn').addEventListener('click', () => {
@@ -576,6 +625,8 @@
       filesToProcess.length = 0;
       fileListElem.innerHTML = "";
       fileDropArea.textContent = "ここにファイルをドロップ";
+      // 暗号化後は公開鍵ファイル選択情報もクリア
+      pubKeyListElem.innerHTML = "";
     });
 
     // ── 鍵管理機能 ──
@@ -706,6 +757,8 @@
       const privIndex = importedPrivateKeys.findIndex(k => k.name === name);
       if (privIndex >= 0) { importedPrivateKeys.splice(privIndex, 1); }
       alert("鍵 " + name + " を削除しました");
+      // 鍵削除後はエクスポート表示領域もクリア
+      clearExportArea();
       refreshKeyList();
     }
 
@@ -724,32 +777,30 @@
     });
 
     // ── IndexedDB 初期化（リセット）処理 ──
-	function resetDatabase() {
-	  if (!confirm("本当に全ての鍵情報を削除しますか？ この操作は元に戻せません。")) return;
-	  // 既存のデータベース接続を閉じる
-	  if (db) {
-	    db.close();
-	  }
-	  const req = indexedDB.deleteDatabase("EasyCryptDB");
-	  req.onsuccess = function() {
-	    alert("IndexedDB が初期化されました。");
-	    // グローバル変数の内容もクリア
-	    for (let key in keyStore) { delete keyStore[key]; }
-	    importedPublicKeys.length = 0;
-	    importedPrivateKeys.length = 0;
-	    db = null;
-	    refreshKeyList();
-	    // 再初期化
-	    initDB();
-	  };
-	  req.onerror = function(e) {
-	    alert("IndexedDB 初期化中にエラーが発生しました。");
-	  };
-	  req.onblocked = function(e) {
-	    alert("他のタブで開いている可能性があります。");
-	  };
-	}
-
+    function resetDatabase() {
+      if (!confirm("本当に全ての鍵情報を削除しますか？ この操作は元に戻せません。")) return;
+      if (db) {
+        db.close();
+      }
+      const req = indexedDB.deleteDatabase("EasyCryptDB");
+      req.onsuccess = function() {
+        alert("IndexedDB が初期化されました。");
+        // 鍵情報クリアと共にエクスポート表示領域も消去
+        for (let key in keyStore) { delete keyStore[key]; }
+        importedPublicKeys.length = 0;
+        importedPrivateKeys.length = 0;
+        clearExportArea();
+        db = null;
+        refreshKeyList();
+        initDB();
+      };
+      req.onerror = function(e) {
+        alert("IndexedDB 初期化中にエラーが発生しました。");
+      };
+      req.onblocked = function(e) {
+        alert("他のタブで開いている可能性があります。");
+      };
+    }
 
     document.getElementById('resetDBBtn').addEventListener('click', resetDatabase);
 
