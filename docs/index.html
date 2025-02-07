@@ -27,12 +27,31 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
     textarea { width: 100%; }
     section { margin-bottom: 30px; }
+
+    /* スピナーのスタイル */
+    #spinner {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      z-index: 1000;
+      text-align: center;
+      font-size: 1.2em;
+    }
   </style>
 </head>
 <body>
   <h1>EasyCrypt</h1>
   <div>鍵はブラウザ内の IndexedDB に保存されます。ブラウザを閉じても保持され、すべての処理はローカルで実施されます。</div>
   <div>つかいかたは<a href="https://note.com/maclir_cala/n/n1837fd391ede" target="_blank">ブラウザ版：公開鍵暗号を使用した暗号化/復号のコードを実装しました</a>をごらんください。</div>
+  
+  <!-- スピナー（処理中表示） -->
+  <div id="spinner">処理中...</div>
 
   <!-- ファイル暗号化／復号セクション -->
   <section id="fileSection">
@@ -107,6 +126,14 @@
   </section>
 
   <script>
+    // ── スピナーの表示・非表示関数 ──
+    function showSpinner() {
+      document.getElementById('spinner').style.display = 'block';
+    }
+    function hideSpinner() {
+      document.getElementById('spinner').style.display = 'none';
+    }
+
     // ── 定数の定義 ──
     const RSA_ALGORITHM = "RSA-OAEP";
     const RSA_HASH = "SHA-256";
@@ -602,31 +629,37 @@
       }
     }
 
-    // ── ボタン押下時の処理 ──
-    document.getElementById('decryptBtn').addEventListener('click', () => {
+    // ── ボタン押下時の処理（スピナー表示付き） ──
+    document.getElementById('decryptBtn').addEventListener('click', async () => {
       if (filesToProcess.length === 0) {
         alert("復号するファイルがありません。");
         return;
       }
-      filesToProcess.forEach(file => { decryptFile(file); });
+      showSpinner();
+      for (let file of filesToProcess) {
+        await decryptFile(file);
+      }
       filesToProcess.length = 0;
       fileListElem.innerHTML = "";
       fileDropArea.textContent = "ここにファイルをドロップ";
-      // 暗号化／復号後は公開鍵ファイル選択情報もクリア
       pubKeyListElem.innerHTML = "";
+      hideSpinner();
     });
 
-    document.getElementById('encryptBtn').addEventListener('click', () => {
+    document.getElementById('encryptBtn').addEventListener('click', async () => {
       if (filesToProcess.length === 0) {
         alert("暗号化するファイルがありません。");
         return;
       }
-      filesToProcess.forEach(file => { encryptFile(file); });
+      showSpinner();
+      for (let file of filesToProcess) {
+        await encryptFile(file);
+      }
       filesToProcess.length = 0;
       fileListElem.innerHTML = "";
       fileDropArea.textContent = "ここにファイルをドロップ";
-      // 暗号化後は公開鍵ファイル選択情報もクリア
       pubKeyListElem.innerHTML = "";
+      hideSpinner();
     });
 
     // ── 鍵管理機能 ──
