@@ -14,6 +14,12 @@
       margin-bottom: 10px;
     }
     .key-section { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    .warning-section {
+      border: 2px solid red;
+      padding: 10px;
+      margin-bottom: 20px;
+      background-color: #ffecec;
+    }
     button { margin: 5px; }
     ul { list-style: none; padding-left: 0; }
     li { margin-bottom: 5px; }
@@ -26,7 +32,7 @@
 <body>
   <h1>EasyCrypt</h1>
   <div>鍵はブラウザ内の IndexedDB に保存されます。ブラウザを閉じても保持され、すべての処理はローカルで実施されます。</div>
-  <div>つかいかたは<a href="https://note.com/maclir_cala/n/n1837fd391ede" target=_blank>ブラウザ版：公開鍵暗号を使用した暗号化/復号のコードを実装しました</a>をごらんください。</div>
+  <div>つかいかたは<a href="https://note.com/maclir_cala/n/n1837fd391ede" target="_blank">ブラウザ版：公開鍵暗号を使用した暗号化/復号のコードを実装しました</a>をごらんください。</div>
 
   <!-- ファイル暗号化／復号セクション -->
   <section id="fileSection">
@@ -88,6 +94,16 @@
       </div>
       <div id="exportArea"></div>
     </div>
+  </section>
+
+  <!-- 取り扱い注意！セクション：IndexedDB初期化ボタン -->
+  <section id="resetSection" class="warning-section">
+    <h2>取り扱い注意！</h2>
+    <p>
+      以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
+      この操作は元に戻せませんので、十分に注意してください。
+    </p>
+    <button id="resetDBBtn" style="background-color: red; color: white;">IndexedDB 初期化</button>
   </section>
 
   <script>
@@ -192,6 +208,8 @@
             );
             const modulus = base64UrlToBase64(record.publicKeyJwk.n);
             importedPublicKeys.push({ name: record.name, modulus: modulus, cryptoKey: pubKey });
+            if (!keyStore[record.name]) { keyStore[record.name] = { publicKey: null, privateKey: null }; }
+            keyStore[record.name].publicKey = pubKey;
           }
           if (record.privateKeyJwk) {
             const privKey = await crypto.subtle.importKey(
@@ -201,19 +219,8 @@
             );
             const modulus = record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "";
             importedPrivateKeys.push({ name: record.name, modulus: modulus, cryptoKey: privKey });
-          }
-          if (record.publicKeyJwk && record.privateKeyJwk) {
-            const pubKey = await crypto.subtle.importKey(
-              "jwk", record.publicKeyJwk,
-              { name: RSA_ALGORITHM, hash: RSA_HASH },
-              true, ["encrypt"]
-            );
-            const privKey = await crypto.subtle.importKey(
-              "jwk", record.privateKeyJwk,
-              { name: RSA_ALGORITHM, hash: RSA_HASH },
-              true, ["decrypt"]
-            );
-            keyStore[record.name] = { publicKey: pubKey, privateKey: privKey };
+            if (!keyStore[record.name]) { keyStore[record.name] = { publicKey: null, privateKey: null }; }
+            keyStore[record.name].privateKey = privKey;
           }
         }
         refreshKeyList();
@@ -715,6 +722,36 @@
       }
       await generateKeyPair(keyName);
     });
+
+    // ── IndexedDB 初期化（リセット）処理 ──
+	function resetDatabase() {
+	  if (!confirm("本当に全ての鍵情報を削除しますか？ この操作は元に戻せません。")) return;
+	  // 既存のデータベース接続を閉じる
+	  if (db) {
+	    db.close();
+	  }
+	  const req = indexedDB.deleteDatabase("EasyCryptDB");
+	  req.onsuccess = function() {
+	    alert("IndexedDB が初期化されました。");
+	    // グローバル変数の内容もクリア
+	    for (let key in keyStore) { delete keyStore[key]; }
+	    importedPublicKeys.length = 0;
+	    importedPrivateKeys.length = 0;
+	    db = null;
+	    refreshKeyList();
+	    // 再初期化
+	    initDB();
+	  };
+	  req.onerror = function(e) {
+	    alert("IndexedDB 初期化中にエラーが発生しました。");
+	  };
+	  req.onblocked = function(e) {
+	    alert("他のタブで開いている可能性があります。");
+	  };
+	}
+
+
+    document.getElementById('resetDBBtn').addEventListener('click', resetDatabase);
 
     window.addEventListener("load", () => {
       initDB();
