@@ -43,7 +43,7 @@
     <ul id="fileList"></ul>
     <div class="key-section">
       <h2>復号</h2>
-      秘密鍵は IndexedDB から自動選択されます
+      秘密鍵は鍵一覧から自動選択されます
       <div>
         <button id="decryptBtn">復号</button>
       </div>
@@ -103,7 +103,7 @@
       以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
       この操作は元に戻せませんので、十分に注意してください。
     </p>
-    <button id="resetDBBtn" style="background-color: red; color: white;">IndexedDB 初期化</button>
+    <button id="resetDBBtn" style="background-color: red; color: white;">鍵一覧初期化</button>
   </section>
 
   <script>
@@ -778,13 +778,13 @@
 
     // ── IndexedDB 初期化（リセット）処理 ──
     function resetDatabase() {
-      if (!confirm("本当に全ての鍵情報を削除しますか？ この操作は元に戻せません。")) return;
+      if (!confirm("本当に全ての鍵一覧を削除しますか？ この操作は元に戻せません。")) return;
       if (db) {
         db.close();
       }
       const req = indexedDB.deleteDatabase("EasyCryptDB");
       req.onsuccess = function() {
-        alert("IndexedDB が初期化されました。");
+        alert("鍵一覧が初期化されました。");
         // 鍵情報クリアと共にエクスポート表示領域も消去
         for (let key in keyStore) { delete keyStore[key]; }
         importedPublicKeys.length = 0;
@@ -795,7 +795,7 @@
         initDB();
       };
       req.onerror = function(e) {
-        alert("IndexedDB 初期化中にエラーが発生しました。");
+        alert("鍵一覧の初期化中にエラーが発生しました。");
       };
       req.onblocked = function(e) {
         alert("他のタブで開いている可能性があります。");
