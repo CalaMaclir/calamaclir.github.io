@@ -143,8 +143,8 @@
 
     // ── グローバル変数 ──
     let db;
-    const keyStore = {}; // 鍵名をキーとする鍵ペアオブジェクト（公開鍵・秘密鍵はセット）
-    const importedPublicKeys = [];   // { name, modulus, cryptoKey }
+    const keyStore = {}; // 鍵管理用（鍵管理一覧に表示される鍵ペア）
+    const importedPublicKeys = [];   // 暗号化用公開鍵（鍵管理一覧には登録しない）
     const importedPrivateKeys = [];  // { name, modulus, cryptoKey }
     const filesToProcess = [];       // ドラッグ＆ドロップまたはファイル選択されたファイル
 
@@ -396,7 +396,7 @@
       }
     });
 
-    // ── 公開鍵ファイル入力（インポート＆DB保存） ──
+    // ── 公開鍵ファイル入力（インポート＆暗号化用登録） ──
     const pubKeyListElem = document.getElementById('pubKeyList');
     document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
       const files = e.target.files;
@@ -404,21 +404,11 @@
         const text = await file.text();
         try {
           const pubKey = await importPublicKeyFromXml(text, file.name);
-          // 同名の鍵ペアが既に存在する場合は上書き
-          if (!keyStore[pubKey.name]) { 
-            keyStore[pubKey.name] = { publicKey: pubKey.cryptoKey, privateKey: null };
-            importedPublicKeys.push(pubKey);
-            const li = document.createElement('li');
-            li.textContent = pubKey.name;
-            pubKeyListElem.appendChild(li);
-          } else {
-            keyStore[pubKey.name].publicKey = pubKey.cryptoKey;
-            const idx = importedPublicKeys.findIndex(k => k.name === pubKey.name);
-            if (idx >= 0) { importedPublicKeys[idx] = pubKey; }
-            else { importedPublicKeys.push(pubKey); }
-          }
-          const jwk = await crypto.subtle.exportKey("jwk", pubKey.cryptoKey);
-          await storePartialKey(pubKey.name, jwk, "public");
+          // 暗号化用公開鍵としてのみ利用し、鍵管理（keyStore/IndexedDB）には登録しない
+          importedPublicKeys.push(pubKey);
+          const li = document.createElement('li');
+          li.textContent = pubKey.name;
+          pubKeyListElem.appendChild(li);
         } catch(err) {
           alert("公開鍵 " + file.name + " のインポートエラー: " + err.message);
         }
