@@ -47,7 +47,7 @@
 <body>
   <h1>EasyCrypt (RSA/楕円曲線統合版)</h1>
   <div>鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます。</div>
-  
+  <div><a href="https://note.com/maclir_cala/n/n170b2f13c083" target=_blank>簡単な説明はこちらをごらんください</a></div>
   <!-- スピナー -->
   <div id="spinner">処理中...</div>
 
@@ -268,7 +268,7 @@
                 { name: RSA_ALGORITHM, hash: RSA_HASH },
                 true, ["encrypt"]
               );
-              // ※鍵管理用として keyStore に登録するが、ここでは暗号化用リストには追加しない
+              // 鍵管理用として keyStore に登録するが、ここでは暗号化用リストには追加しない
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].publicKey = pubKey;
               keyStore[record.name].type = "RSA";
@@ -512,31 +512,27 @@
       for (let file of files) {
         const text = await file.text();
         try {
+          // ■ 改修：ファイル名（.pvtkey を除く）をキー名として、すでに同名の鍵がある場合はインポートをスキップする
           let keyName = file.name;
           if (keyName.toLowerCase().endsWith(".pvtkey")) {
             keyName = keyName.slice(0, -7);
           }
+          if (keyStore[keyName]) {
+            alert("秘密鍵 " + keyName + " は既に存在するため、インポートをスキップします。");
+            removeFileFromFileList(file.name);
+            continue; // 同名の鍵がある場合は以降の処理をスキップ
+          }
           const keyPair = await importPrivateKeyFromXmlUnified(text, keyName);
           // 鍵管理用に登録（ここでは encryptionPublicKeys には追加しない）
-          if (!keyStore[keyPair.name]) {
-            keyStore[keyPair.name] = { 
-              publicKey: keyPair.publicKey, 
-              privateKey: keyPair.privateKey, 
-              type: keyPair.type 
-            };
-            importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
-            const li = document.createElement('li');
-            li.textContent = keyPair.name + " (" + keyPair.type + ")";
-            privKeyListElem.appendChild(li);
-          } else {
-            keyStore[keyPair.name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey, type: keyPair.type };
-            let privIndex = importedPrivateKeys.findIndex(k => k.name === keyPair.name);
-            if (privIndex >= 0) {
-              importedPrivateKeys[privIndex] = { name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type };
-            } else {
-              importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
-            }
-          }
+          keyStore[keyPair.name] = { 
+            publicKey: keyPair.publicKey, 
+            privateKey: keyPair.privateKey, 
+            type: keyPair.type 
+          };
+          importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
+          const li = document.createElement('li');
+          li.textContent = keyPair.name + " (" + keyPair.type + ")";
+          privKeyListElem.appendChild(li);
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
