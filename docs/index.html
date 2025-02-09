@@ -520,6 +520,8 @@
     // ── 秘密鍵ファイル入力（インポート＆DB保存、公開鍵自動生成） ──
     const privKeyListElem = document.getElementById('privKeyList');
     document.getElementById('privKeyInput').addEventListener('change', async (e) => {
+      // ★ 変更点：インポート成功したかどうかのフラグを追加 ★
+      let imported = false;
       const files = e.target.files;
       for (let file of files) {
         const text = await file.text();
@@ -549,11 +551,17 @@
           await storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
           refreshKeyList();
           clearExportArea();
+          // 成功したらフラグを立てる
+          imported = true;
         } catch(err) {
           alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
         }
       }
       e.target.value = "";
+      // ★ 秘密鍵インポート処理終了後、インポート成功していれば完了メッセージを表示 ★
+      if(imported){
+        alert("秘密鍵インポート完了");
+      }
       // ★ 秘密鍵インポート処理終了後、表示を起動時状態にリセット ★
       resetUI();
     });
