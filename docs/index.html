@@ -158,6 +158,18 @@
     function clearExportArea() {
       document.getElementById("exportArea").innerHTML = "";
     }
+    // ★ 起動時と同じ状態に表示をリセットする関数 ★
+    function resetUI() {
+      // ファイル処理に関する表示をリセット
+      filesToProcess.length = 0;
+      document.getElementById('fileList').innerHTML = "";
+      document.getElementById('fileDropArea').textContent = "ここにファイルをドロップ";
+      document.getElementById('pubKeyList').innerHTML = "";
+      document.getElementById('fileSelect').value = "";
+      // 秘密鍵インポート用のリストも初期状態（空）に戻す
+      document.getElementById('privKeyList').innerHTML = "";
+      hideSpinner();
+    }
 
     // ── ユーティリティ関数 ──
     function concatUint8Arrays(arrays) {
@@ -512,15 +524,14 @@
       for (let file of files) {
         const text = await file.text();
         try {
-          // ■ 改修：ファイル名（.pvtkey を除く）をキー名として、すでに同名の鍵がある場合はインポートをスキップする
+          // ※ファイル名（.pvtkey を除く）をキー名として重複チェック
           let keyName = file.name;
           if (keyName.toLowerCase().endsWith(".pvtkey")) {
             keyName = keyName.slice(0, -7);
           }
           if (keyStore[keyName]) {
             alert("秘密鍵 " + keyName + " は既に存在するため、インポートをスキップします。");
-            removeFileFromFileList(file.name);
-            continue; // 同名の鍵がある場合は以降の処理をスキップ
+            continue;
           }
           const keyPair = await importPrivateKeyFromXmlUnified(text, keyName);
           // 鍵管理用に登録（ここでは encryptionPublicKeys には追加しない）
@@ -536,7 +547,6 @@
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
-          removeFileFromFileList(file.name);
           refreshKeyList();
           clearExportArea();
         } catch(err) {
@@ -544,20 +554,9 @@
         }
       }
       e.target.value = "";
+      // ★ 秘密鍵インポート処理終了後、表示を起動時状態にリセット ★
+      resetUI();
     });
-    function removeFileFromFileList(fileName) {
-      const items = fileListElem.getElementsByTagName("li");
-      for (let i = items.length - 1; i >= 0; i--) {
-        if (items[i].textContent === fileName) {
-          items[i].remove();
-        }
-      }
-      for (let i = filesToProcess.length - 1; i >= 0; i--) {
-        if (filesToProcess[i].name === fileName) {
-          filesToProcess.splice(i, 1);
-        }
-      }
-    }
 
     // ── ファイル暗号化処理（統合版） ──
     // ※暗号化では、encryptionPublicKeys に登録された公開鍵のみを使用します
@@ -661,7 +660,7 @@
       const blob = new Blob([finalData], { type: "application/octet-stream" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = file.name + ".easycrypted";
+      a.download = file.name + ".crypted";
       a.click();
     }
 
@@ -805,11 +804,8 @@
       for (let file of filesToProcess) {
         await encryptFile(file);
       }
-      filesToProcess.length = 0;
-      fileListElem.innerHTML = "";
-      fileDropArea.textContent = "ここにファイルをドロップ";
-      pubKeyListElem.innerHTML = "";
-      hideSpinner();
+      // ★ 暗号化処理完了後、表示を初期状態にリセット ★
+      resetUI();
     });
     document.getElementById('decryptBtn').addEventListener('click', async () => {
       if (filesToProcess.length === 0) {
@@ -820,10 +816,8 @@
       for (let file of filesToProcess) {
         await decryptFile(file);
       }
-      filesToProcess.length = 0;
-      fileListElem.innerHTML = "";
-      fileDropArea.textContent = "ここにファイルをドロップ";
-      hideSpinner();
+      // ★ 復号処理完了後、表示を初期状態にリセット ★
+      resetUI();
     });
 
     // ── 鍵生成（統合版）：選択されたアルゴリズムに応じて鍵ペア生成 ──
@@ -843,7 +837,6 @@
           await storeKeyPair(name, "RSA", publicJwk, privateJwk);
           // RSA識別子は modulus（base64形式）
           const modulus = base64UrlToBase64(publicJwk.n);
-          // 鍵管理用には登録するが、暗号化用には登録しない
           alert("RSA鍵ペア生成完了: " + name);
           refreshKeyList();
         } catch (e) {
@@ -888,7 +881,16 @@
 
         const exportPrivBtn = document.createElement("button");
         exportPrivBtn.textContent = "秘密鍵エクスポート";
-        exportPrivBtn.onclick = () => exportKey(name, "private");
+        // ★ 修正1: ボタンを視覚的に強調 ★
+        exportPrivBtn.style.backgroundColor = "#ffcccc"; // 薄い赤色
+        exportPrivBtn.style.border = "2px solid red";
+        exportPrivBtn.style.fontWeight = "bold";
+        // ★ 修正2: エクスポート前に確認ダイアログを表示 ★
+        exportPrivBtn.onclick = () => {
+          if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、暗号化されたデータが復号不能になったり、システム全体の安全性が損なわれる可能性があります。\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
+            exportKey(name, "private");
+          }
+        };
 
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
@@ -952,7 +954,13 @@
           xml = convertPrivateJwkToXml(jwk);
         }
         const exportArea = document.getElementById("exportArea");
-        exportArea.innerHTML = `<h3>${name} の ${type === "public" ? "公開鍵" : "秘密鍵"} エクスポート結果</h3>`;
+        // ★ 修正3: エクスポート結果表示領域に警告メッセージを追加 ★
+        if (type === "private") {
+          exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
+                                  <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
+        } else {
+          exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果</h3>`;
+        }
         const textarea = document.createElement("textarea");
         textarea.rows = 10;
         textarea.value = xml;
