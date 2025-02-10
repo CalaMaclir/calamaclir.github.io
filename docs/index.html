@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>EasyCrypt (RSA/楕円曲線統合版)</title>
+  <title>PubliCrypt</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1, h2, h3 { margin-bottom: 10px; }
@@ -45,7 +45,7 @@
   </style>
 </head>
 <body>
-  <h1>EasyCrypt (RSA/楕円曲線統合版)</h1>
+  <h1>PubliCrypt</h1>
   <div>鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます。</div>
   <div><a href="https://note.com/maclir_cala/n/n170b2f13c083" target=_blank>簡単な説明はこちらをごらんください</a></div>
   <!-- スピナー -->
@@ -213,7 +213,7 @@
 
     // ── IndexedDB 関連 ──
     function initDB() {
-      const request = indexedDB.open("EasyCryptDB", 1);
+      const request = indexedDB.open("PubliCryptDB", 1);
       request.onupgradeneeded = function(e) {
         db = e.target.result;
         if (!db.objectStoreNames.contains("keys")) {
@@ -520,6 +520,8 @@
     // ── 秘密鍵ファイル入力（インポート＆DB保存、公開鍵自動生成） ──
     const privKeyListElem = document.getElementById('privKeyList');
     document.getElementById('privKeyInput').addEventListener('change', async (e) => {
+      // ★ 変更点：インポート成功したかどうかのフラグを追加 ★
+      let imported = false;
       const files = e.target.files;
       for (let file of files) {
         const text = await file.text();
@@ -549,11 +551,17 @@
           await storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
           refreshKeyList();
           clearExportArea();
+          // 成功したらフラグを立てる
+          imported = true;
         } catch(err) {
           alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
         }
       }
       e.target.value = "";
+      // ★ 秘密鍵インポート処理終了後、インポート成功していれば完了メッセージを表示 ★
+      if(imported){
+        alert("秘密鍵インポート完了");
+      }
       // ★ 秘密鍵インポート処理終了後、表示を起動時状態にリセット ★
       resetUI();
     });
@@ -1011,7 +1019,7 @@
     function resetDatabase() {
       if (!confirm("本当に全ての鍵一覧を削除しますか？ この操作は元に戻せません。")) return;
       if (db) { db.close(); }
-      const req = indexedDB.deleteDatabase("EasyCryptDB");
+      const req = indexedDB.deleteDatabase("PubliCryptDB");
       req.onsuccess = function() {
         alert("鍵一覧が初期化されました。");
         for (let key in keyStore) { delete keyStore[key]; }
