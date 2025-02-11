@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PubliCryptDisp</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1, h2, h3 { margin-bottom: 10px; }
+    p { margin-bottom: 10px; }
+    #dropArea {
+      border: 2px dashed #888;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    #structureOutput {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      white-space: pre-wrap;
+      background-color: #f7f7f7;
+    }
+    .keyData {
+      font-family: "Courier New", monospace;
+      background-color: #eee;
+      padding: 5px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <h1>暗号化ファイル構造表示ツール</h1>
+  <p>暗号化ファイル（.crypted など）をドラッグ＆ドロップするか、ファイル選択してください。</p>
+  <div id="dropArea">ここにファイルをドロップ</div>
+  <input type="file" id="fileInput">
+  <div id="structureOutput"></div>
+
+  <script>
+    // DataViewからリトルエンディアンの32bit整数を読み出す関数
+    function readInt32LE(view, offset) {
+      return view.getInt32(offset, true);
+    }
+
+    // Uint8Arrayを16進数文字列に変換する関数
+    function toHexString(byteArray) {
+      return Array.from(byteArray, byte => ('0' + byte.toString(16)).slice(-2)).join('');
+    }
+
+    // 暗号化ファイルの構造を解析する関数
+    function parseEncryptedFile(arrayBuffer) {
+      const data = new Uint8Array(arrayBuffer);
+      const view = new DataView(arrayBuffer);
+      let offset = 0;
+      if (data.length < 4) {
+        throw new Error("ファイルサイズが不正です。");
+      }
+      // ヘッダーエントリー数（4バイト）
+      const entryCount = readInt32LE(view, offset);
+      offset += 4;
+      const headerEntries = [];
+      for (let i = 0; i < entryCount; i++) {
+        if (offset >= data.length) break;
+        // 1バイト：エントリータイプ (0: RSA, 1: EC)
+        const typeByte = data[offset];
+        offset += 1;
+        if (typeByte === 0) { // RSAの場合
+          // 識別子の長さとデータを取得
+          const idLen = readInt32LE(view, offset);
+          offset += 4;
+          const identifierBytes = data.slice(offset, offset + idLen);
+          const identifier = toHexString(identifierBytes);
+          offset += idLen;
+          // 暗号化鍵の長さとデータを取得
+          const encryptedKeyLen = readInt32LE(view, offset);
+          offset += 4;
+          const encryptedKeyBytes = data.slice(offset, offset + encryptedKeyLen);
+          const encryptedKey = toHexString(encryptedKeyBytes);
+          offset += encryptedKeyLen;
+          headerEntries.push({
+            type: "RSA",
+            identifier: identifier,
+            encryptedKey: {
+              length: encryptedKeyLen,
+              value: encryptedKey
+            }
+          });
+        } else if (typeByte === 1) { // ECの場合
+          // 受信者識別子の長さとデータを取得
+          const recIdLen = readInt32LE(view, offset);
+          offset += 4;
+          const recipientIdBytes = data.slice(offset, offset + recIdLen);
+          const recipientId = toHexString(recipientIdBytes);
+          offset += recIdLen;
+          // エフェメラル公開鍵の長さとデータを取得
+          const ephLen = readInt32LE(view, offset);
+          offset += 4;
+          const ephemeralPubBytes = data.slice(offset, offset + ephLen);
+          const ephemeralPub = toHexString(ephemeralPubBytes);
+          offset += ephLen;
+          // ラッピング出力の長さとデータを取得
+          const wrapLen = readInt32LE(view, offset);
+          offset += 4;
+          const wrappingOutputBytes = data.slice(offset, offset + wrapLen);
+          const wrappingOutput = toHexString(wrappingOutputBytes);
+          offset += wrapLen;
+          headerEntries.push({
+            type: "EC",
+            recipientId: recipientId,
+            ephemeralPub: {
+              length: ephLen,
+              value: ephemeralPub
+            },
+            wrappingOutput: {
+              length: wrapLen,
+              value: wrappingOutput
+            }
+          });
+        } else {
+          throw new Error("不明なエントリータイプ: " + typeByte);
+        }
+      }
+      // AES IV（固定12バイト）の取得
+      if (offset + 12 > data.length) {
+        throw new Error("AES IVが見つかりません。");
+      }
+      const aesIVBytes = data.slice(offset, offset + 12);
+      const aesIV = toHexString(aesIVBytes);
+      offset += 12;
+      // 暗号化ペイロード：内容の解析は行わず、存在とサイズのみを示す
+      const payloadEncLength = data.length - offset;
+      return {
+        entryCount,
+        headerEntries,
+        aesIV: { length: 12, value: aesIV },
+        payloadEnc: { length: payloadEncLength }
+      };
+    }
+
+    // 解析結果をHTMLに整形して表示する関数
+    function displayStructure(structure) {
+      let html = "<h2>暗号化ファイル構造</h2>";
+      html += "<p>ヘッダーエントリー数: " + structure.entryCount + "</p>";
+      html += "<h3>ヘッダーエントリー</h3>";
+      html += "<ul>";
+      structure.headerEntries.forEach((entry, index) => {
+        html += "<li><strong>エントリー " + (index + 1) + " (" + entry.type + "):</strong><br>";
+        if (entry.type === "RSA") {
+          html += "・識別子: <span class='keyData'>" + entry.identifier + "</span><br>";
+          html += "・暗号化鍵: (長さ " + entry.encryptedKey.length + " バイト)<br>";
+          html += "<span class='keyData'>" + entry.encryptedKey.value + "</span>";
+        } else if (entry.type === "EC") {
+          html += "・受信者識別子: <span class='keyData'>" + entry.recipientId + "</span><br>";
+          html += "・エフェメラル公開鍵: (長さ " + entry.ephemeralPub.length + " バイト)<br>";
+          html += "<span class='keyData'>" + entry.ephemeralPub.value + "</span><br>";
+          html += "・ラッピング出力: (長さ " + entry.wrappingOutput.length + " バイト)<br>";
+          html += "<span class='keyData'>" + entry.wrappingOutput.value + "</span>";
+        }
+        html += "</li>";
+      });
+      html += "</ul>";
+      html += "<h3>AES IV</h3>";
+      html += "<p>存在: (12 バイト)<br>";
+      html += "IV: <span class='keyData'>" + structure.aesIV.value + "</span></p>";
+      html += "<h3>暗号化ペイロード</h3>";
+      html += "<p>存在: " + structure.payloadEnc.length + " バイト</p>";
+      document.getElementById("structureOutput").innerHTML = html;
+    }
+
+    // ファイル選択時の処理
+    document.getElementById("fileInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const structure = parseEncryptedFile(arrayBuffer);
+        displayStructure(structure);
+      } catch (err) {
+        alert("解析エラー: " + err.message);
+      }
+    });
+
+    // ドラッグ＆ドロップによるファイル読み込み設定
+    function setupDragAndDrop() {
+      const dropArea = document.getElementById("dropArea");
+      dropArea.addEventListener("dragover", function(e) {
+        e.preventDefault();
+        dropArea.style.borderColor = "#000";
+      });
+      dropArea.addEventListener("dragleave", function(e) {
+        e.preventDefault();
+        dropArea.style.borderColor = "#888";
+      });
+      dropArea.addEventListener("drop", async function(e) {
+        e.preventDefault();
+        dropArea.style.borderColor = "#888";
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const structure = parseEncryptedFile(arrayBuffer);
+          displayStructure(structure);
+        } catch (err) {
+          alert("解析エラー: " + err.message);
+        }
+      });
+    }
+
+    window.addEventListener("load", setupDragAndDrop);
+  </script>
+</body>
+</html>

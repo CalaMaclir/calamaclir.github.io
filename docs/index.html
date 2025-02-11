@@ -280,7 +280,6 @@
                 { name: RSA_ALGORITHM, hash: RSA_HASH },
                 true, ["encrypt"]
               );
-              // 鍵管理用として keyStore に登録するが、ここでは暗号化用リストには追加しない
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].publicKey = pubKey;
               keyStore[record.name].type = "RSA";
@@ -302,7 +301,12 @@
                 { name: RSA_ALGORITHM, hash: RSA_HASH },
                 true, ["decrypt"]
               );
-              importedPrivateKeys.push({ name: record.name, identifier: record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "", cryptoKey: privKey, type: "RSA" });
+              importedPrivateKeys.push({ 
+                name: record.name, 
+                identifier: record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "", 
+                cryptoKey: privKey, 
+                type: "RSA" 
+              });
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].privateKey = privKey;
             } else if (record.type === "EC") {
@@ -311,7 +315,15 @@
                 { name: EC_ALGORITHM, namedCurve: record.publicKeyJwk.crv },
                 true, ["deriveKey"]
               );
-              importedPrivateKeys.push({ name: record.name, identifier: (await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey)), cryptoKey: privKey, type: "EC" });
+              // 修正: 公開鍵の raw データをエクスポートして base64 文字列に変換する
+              const raw = await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey);
+              const identifier = arrayBufferToBase64(raw);
+              importedPrivateKeys.push({ 
+                name: record.name, 
+                identifier: identifier, 
+                cryptoKey: privKey, 
+                type: "EC" 
+              });
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].privateKey = privKey;
             }
@@ -505,7 +517,6 @@
         const text = await file.text();
         try {
           const pubKey = await importPublicKeyFromXmlUnified(text, file.name);
-          // 暗号化用としてのみ利用するため、encryptionPublicKeys に追加
           encryptionPublicKeys.push(pubKey);
           const li = document.createElement('li');
           li.textContent = pubKey.name + " (" + pubKey.type + ")";
@@ -520,13 +531,11 @@
     // ── 秘密鍵ファイル入力（インポート＆DB保存、公開鍵自動生成） ──
     const privKeyListElem = document.getElementById('privKeyList');
     document.getElementById('privKeyInput').addEventListener('change', async (e) => {
-      // ★ 変更点：インポート成功したかどうかのフラグを追加 ★
       let imported = false;
       const files = e.target.files;
       for (let file of files) {
         const text = await file.text();
         try {
-          // ※ファイル名（.pvtkey を除く）をキー名として重複チェック
           let keyName = file.name;
           if (keyName.toLowerCase().endsWith(".pvtkey")) {
             keyName = keyName.slice(0, -7);
@@ -536,7 +545,6 @@
             continue;
           }
           const keyPair = await importPrivateKeyFromXmlUnified(text, keyName);
-          // 鍵管理用に登録（ここでは encryptionPublicKeys には追加しない）
           keyStore[keyPair.name] = { 
             publicKey: keyPair.publicKey, 
             privateKey: keyPair.privateKey, 
@@ -551,23 +559,19 @@
           await storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
           refreshKeyList();
           clearExportArea();
-          // 成功したらフラグを立てる
           imported = true;
         } catch(err) {
           alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
         }
       }
       e.target.value = "";
-      // ★ 秘密鍵インポート処理終了後、インポート成功していれば完了メッセージを表示 ★
       if(imported){
         alert("秘密鍵インポート完了");
       }
-      // ★ 秘密鍵インポート処理終了後、表示を起動時状態にリセット ★
       resetUI();
     });
 
     // ── ファイル暗号化処理（統合版） ──
-    // ※暗号化では、encryptionPublicKeys に登録された公開鍵のみを使用します
     async function encryptFile(file) {
       const aesKey = await crypto.subtle.generateKey(
         { name: AES_ALGORITHM, length: AES_KEY_LENGTH },
@@ -812,7 +816,6 @@
       for (let file of filesToProcess) {
         await encryptFile(file);
       }
-      // ★ 暗号化処理完了後、表示を初期状態にリセット ★
       resetUI();
     });
     document.getElementById('decryptBtn').addEventListener('click', async () => {
@@ -824,7 +827,6 @@
       for (let file of filesToProcess) {
         await decryptFile(file);
       }
-      // ★ 復号処理完了後、表示を初期状態にリセット ★
       resetUI();
     });
 
@@ -843,7 +845,6 @@
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(name, "RSA", publicJwk, privateJwk);
-          // RSA識別子は modulus（base64形式）
           const modulus = base64UrlToBase64(publicJwk.n);
           alert("RSA鍵ペア生成完了: " + name);
           refreshKeyList();
@@ -889,11 +890,9 @@
 
         const exportPrivBtn = document.createElement("button");
         exportPrivBtn.textContent = "秘密鍵エクスポート";
-        // ★ 修正1: ボタンを視覚的に強調 ★
-        exportPrivBtn.style.backgroundColor = "#ffcccc"; // 薄い赤色
+        exportPrivBtn.style.backgroundColor = "#ffcccc";
         exportPrivBtn.style.border = "2px solid red";
         exportPrivBtn.style.fontWeight = "bold";
-        // ★ 修正2: エクスポート前に確認ダイアログを表示 ★
         exportPrivBtn.onclick = () => {
           if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、暗号化されたデータが復号不能になったり、システム全体の安全性が損なわれる可能性があります。\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
             exportKey(name, "private");
@@ -962,7 +961,6 @@
           xml = convertPrivateJwkToXml(jwk);
         }
         const exportArea = document.getElementById("exportArea");
-        // ★ 修正3: エクスポート結果表示領域に警告メッセージを追加 ★
         if (type === "private") {
           exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
                                   <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
@@ -1012,7 +1010,7 @@
         return;
       }
       const algSelect = document.getElementById("keyAlgorithmSelect");
-      const algType = algSelect.value; // "RSA" or "EC"
+      const algType = algSelect.value;
       await generateKeyPair(keyName, algType);
     });
     // ── IndexedDB初期化（リセット） ──
