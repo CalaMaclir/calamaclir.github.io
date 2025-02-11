@@ -58,6 +58,7 @@
         <tr>
           <th>鍵名</th>
           <th>種別</th>
+          <th>鍵情報</th>
         </tr>
       </thead>
       <tbody>
@@ -93,6 +94,11 @@
     }
     function readInt32LE(view, offset) {
       return view.getInt32(offset, true);
+    }
+    // RSAのModulus（標準の base64 文字列）からビット長を推定する関数
+    function getRsaBitLengthFromXmlModulus(modulusBase64) {
+      const binaryString = atob(modulusBase64);
+      return binaryString.length * 8;
     }
     
     // ── IndexedDB 関連 ──
@@ -132,6 +138,8 @@
                 if (!keyStore[record.name]) { keyStore[record.name] = {}; }
                 keyStore[record.name].publicKey = pubKey;
                 keyStore[record.name].type = "RSA";
+                // RSAの場合、JWK の n (base64url) を標準base64に変換してビット長を推定
+                keyStore[record.name].bitLength = getRsaBitLengthFromXmlModulus(base64UrlToBase64(record.publicKeyJwk.n));
               } catch(err) {
                 console.error("RSA公開鍵インポートエラー", err);
               }
@@ -145,6 +153,7 @@
                 if (!keyStore[record.name]) { keyStore[record.name] = {}; }
                 keyStore[record.name].publicKey = pubKey;
                 keyStore[record.name].type = "EC";
+                keyStore[record.name].curve = record.publicKeyJwk.crv;
               } catch(err) {
                 console.error("EC公開鍵インポートエラー", err);
               }
@@ -203,8 +212,18 @@
         tdName.textContent = keyName;
         const tdType = document.createElement("td");
         tdType.textContent = keyStore[keyName].type;
+        // 鍵情報: RSAの場合はビット長、ECの場合は曲線名
+        const tdKeyInfo = document.createElement("td");
+        if (keyStore[keyName].type === "RSA") {
+          tdKeyInfo.textContent = keyStore[keyName].bitLength ? keyStore[keyName].bitLength + " bit" : "N/A";
+        } else if (keyStore[keyName].type === "EC") {
+          tdKeyInfo.textContent = keyStore[keyName].curve ? keyStore[keyName].curve : "N/A";
+        } else {
+          tdKeyInfo.textContent = "N/A";
+        }
         tr.appendChild(tdName);
         tr.appendChild(tdType);
+        tr.appendChild(tdKeyInfo);
         tbody.appendChild(tr);
       }
     }
