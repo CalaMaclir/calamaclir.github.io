@@ -106,6 +106,7 @@
             <tr>
               <th>鍵名</th>
               <th>種別</th>
+              <th>鍵情報</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -139,7 +140,7 @@
 
     // ── グローバル変数 ──
     let db;
-    // keyStore: 各鍵は { publicKey, privateKey, type }（type:"RSA" or "EC"）
+    // keyStore: 各鍵は { publicKey, privateKey, type, bitLength（RSAの場合）/curve（ECの場合） }
     const keyStore = {};
     // importedPrivateKeys は復号用に登録（DBや秘密鍵インポートで登録）
     const importedPrivateKeys = [];
@@ -160,13 +161,11 @@
     }
     // ★ 起動時と同じ状態に表示をリセットする関数 ★
     function resetUI() {
-      // ファイル処理に関する表示をリセット
       filesToProcess.length = 0;
       document.getElementById('fileList').innerHTML = "";
       document.getElementById('fileDropArea').textContent = "ここにファイルをドロップ";
       document.getElementById('pubKeyList').innerHTML = "";
       document.getElementById('fileSelect').value = "";
-      // 秘密鍵インポート用のリストも初期状態（空）に戻す
       document.getElementById('privKeyList').innerHTML = "";
       hideSpinner();
     }
@@ -209,6 +208,13 @@
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
       return bytes;
+    }
+
+    // ── RSAビット長推定関数 ──
+    function getRsaBitLengthFromXmlModulus(modulusBase64) {
+      // modulusBase64 は標準の base64 文字列
+      const binaryString = atob(modulusBase64);
+      return binaryString.length * 8;
     }
 
     // ── IndexedDB 関連 ──
@@ -283,6 +289,7 @@
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].publicKey = pubKey;
               keyStore[record.name].type = "RSA";
+              keyStore[record.name].bitLength = getRsaBitLengthFromXmlModulus(base64UrlToBase64(record.publicKeyJwk.n));
             } else if (record.type === "EC") {
               const pubKey = await crypto.subtle.importKey(
                 "jwk", record.publicKeyJwk,
@@ -292,6 +299,7 @@
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].publicKey = pubKey;
               keyStore[record.name].type = "EC";
+              keyStore[record.name].curve = record.publicKeyJwk.crv;
             }
           }
           if (record.privateKeyJwk) {
@@ -315,7 +323,6 @@
                 { name: EC_ALGORITHM, namedCurve: record.publicKeyJwk.crv },
                 true, ["deriveKey"]
               );
-              // 修正: 公開鍵の raw データをエクスポートして base64 文字列に変換する
               const raw = await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey);
               const identifier = arrayBufferToBase64(raw);
               importedPrivateKeys.push({ 
@@ -355,8 +362,8 @@
         { name: RSA_ALGORITHM, hash: RSA_HASH },
         true, ["encrypt"]
       );
-      // 識別子は modulus（標準base64）
-      return { name: fileName, identifier: modulus, cryptoKey: cryptoKey, type: "RSA" };
+      const bitLength = getRsaBitLengthFromXmlModulus(modulus);
+      return { name: fileName, identifier: modulus, cryptoKey: cryptoKey, type: "RSA", bitLength: bitLength };
     }
     // RSA形式の秘密鍵インポート
     async function importPrivateKeyFromXmlRSA(xmlString, fileName) {
@@ -401,7 +408,8 @@
         { name: RSA_ALGORITHM, hash: RSA_HASH },
         true, ["encrypt"]
       );
-      return { name: fileName, identifier: modulus, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "RSA" };
+      const bitLength = getRsaBitLengthFromXmlModulus(modulus);
+      return { name: fileName, identifier: modulus, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "RSA", bitLength: bitLength };
     }
     // EC形式の公開鍵インポート
     async function importPublicKeyFromXmlEC(xmlString, fileName) {
@@ -421,7 +429,7 @@
       );
       const raw = await crypto.subtle.exportKey("raw", cryptoKey);
       const identifier = arrayBufferToBase64(raw);
-      return { name: fileName, identifier: identifier, cryptoKey: cryptoKey, type: "EC" };
+      return { name: fileName, identifier: identifier, cryptoKey: cryptoKey, type: "EC", curve: curve };
     }
     // EC形式の秘密鍵インポート
     async function importPrivateKeyFromXmlEC(xmlString, fileName) {
@@ -448,7 +456,7 @@
       );
       const raw = await crypto.subtle.exportKey("raw", publicCryptoKey);
       const identifier = arrayBufferToBase64(raw);
-      return { name: fileName, identifier: identifier, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "EC" };
+      return { name: fileName, identifier: identifier, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "EC", curve: curve };
     }
     // 統合版：XMLから公開鍵インポート
     async function importPublicKeyFromXmlUnified(xmlString, fileName) {
@@ -548,7 +556,9 @@
           keyStore[keyPair.name] = { 
             publicKey: keyPair.publicKey, 
             privateKey: keyPair.privateKey, 
-            type: keyPair.type 
+            type: keyPair.type,
+            bitLength: keyPair.bitLength,
+            curve: keyPair.curve
           };
           importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
           const li = document.createElement('li');
@@ -841,11 +851,15 @@
         };
         try {
           const keyPair = await crypto.subtle.generateKey(algorithm, true, ["encrypt", "decrypt"]);
-          keyStore[name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey, type: "RSA" };
+          keyStore[name] = { 
+            publicKey: keyPair.publicKey, 
+            privateKey: keyPair.privateKey, 
+            type: "RSA",
+            bitLength: RSA_MODULUS_LENGTH
+          };
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(name, "RSA", publicJwk, privateJwk);
-          const modulus = base64UrlToBase64(publicJwk.n);
           alert("RSA鍵ペア生成完了: " + name);
           refreshKeyList();
         } catch (e) {
@@ -858,12 +872,15 @@
             { name: EC_ALGORITHM, namedCurve: EC_NAMED_CURVE },
             true, ["deriveKey", "deriveBits"]
           );
-          keyStore[name] = { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey, type: "EC" };
+          keyStore[name] = { 
+            publicKey: keyPair.publicKey, 
+            privateKey: keyPair.privateKey, 
+            type: "EC",
+            curve: EC_NAMED_CURVE
+          };
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(name, "EC", publicJwk, privateJwk);
-          const raw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
-          const identifier = arrayBufferToBase64(raw);
           alert("楕円曲線鍵ペア生成完了: " + name);
           refreshKeyList();
         } catch (e) {
@@ -872,22 +889,41 @@
         }
       }
     }
-    // 鍵一覧の再表示：各鍵名と種別を表示
+    // 鍵一覧の再表示：各鍵名と種別と鍵情報を表示
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
       for (const name in keyStore) {
         const tr = document.createElement("tr");
+        
+        // 鍵名
         const tdName = document.createElement("td");
         tdName.textContent = name;
+        tr.appendChild(tdName);
+        
+        // 種別
         const tdType = document.createElement("td");
         tdType.textContent = keyStore[name].type;
+        tr.appendChild(tdType);
+        
+        // 鍵情報（RSA: ビット長、EC: 曲線名）
+        const tdKeyInfo = document.createElement("td");
+        if (keyStore[name].type === "RSA") {
+          tdKeyInfo.textContent = keyStore[name].bitLength ? keyStore[name].bitLength + " bit" : "N/A";
+        } else if (keyStore[name].type === "EC") {
+          tdKeyInfo.textContent = keyStore[name].curve ? keyStore[name].curve : "N/A";
+        } else {
+          tdKeyInfo.textContent = "N/A";
+        }
+        tr.appendChild(tdKeyInfo);
+        
+        // 操作ボタン
         const tdOps = document.createElement("td");
-
+        
         const exportPubBtn = document.createElement("button");
         exportPubBtn.textContent = "公開鍵エクスポート";
         exportPubBtn.onclick = () => exportKey(name, "public");
-
+        
         const exportPrivBtn = document.createElement("button");
         exportPrivBtn.textContent = "秘密鍵エクスポート";
         exportPrivBtn.style.backgroundColor = "#ffcccc";
@@ -898,19 +934,17 @@
             exportKey(name, "private");
           }
         };
-
+        
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name);
-
+        
         tdOps.appendChild(exportPubBtn);
         tdOps.appendChild(document.createTextNode("　"));
         tdOps.appendChild(exportPrivBtn);
         tdOps.appendChild(document.createTextNode("　"));
         tdOps.appendChild(deleteBtn);
-
-        tr.appendChild(tdName);
-        tr.appendChild(tdType);
+        
         tr.appendChild(tdOps);
         tbody.appendChild(tr);
       }
