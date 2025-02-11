@@ -6,206 +6,328 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1, h2, h3 { margin-bottom: 10px; }
-    p { margin-bottom: 10px; }
-    #dropArea {
+    #fileDropArea {
       border: 2px dashed #888;
       padding: 20px;
       text-align: center;
       margin-bottom: 10px;
     }
-    #structureOutput {
-      margin-top: 20px;
-      border: 1px solid #ccc;
-      padding: 10px;
-      white-space: pre-wrap;
-      background-color: #f7f7f7;
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    ul { list-style: none; padding-left: 0; }
+    li { margin-bottom: 15px; padding: 5px; border-bottom: 1px dotted #aaa; }
+    #headerOutput { margin-top: 10px; }
+    .entry-info {
+      margin-bottom: 3px;
+      line-height: 1.4;
     }
-    .keyData {
-      font-family: "Courier New", monospace;
-      background-color: #eee;
-      padding: 5px;
+    /* 長い識別子を適切に折り返す */
+    .identifier {
       word-break: break-all;
+      white-space: pre-wrap;
+    }
+    /* 一致する秘密鍵の表示を強調 */
+    .matched-key {
+      background-color: #e0f7fa;
+      color: #00796b;
+      font-weight: bold;
+      padding: 3px 6px;
+      margin-top: 5px;
+      border-radius: 4px;
+      display: inline-block;
     }
   </style>
 </head>
 <body>
-  <h1>暗号化ファイル構造表示ツール</h1>
-  <p>暗号化ファイル（.crypted など）をドラッグ＆ドロップするか、ファイル選択してください。</p>
-  <div id="dropArea">ここにファイルをドロップ</div>
-  <input type="file" id="fileInput">
-  <div id="structureOutput"></div>
-
+  <h1>PubliCryptDisp</h1>
+  
+  <!-- ファイルヘッダー解析セクション -->
+  <section id="headerAnalysis">
+    <h2>ファイルヘッダー解析</h2>
+    <div id="fileDropArea">ここにファイルをドロップ</div>
+    <input type="file" id="fileSelect">
+    <button id="analyzeBtn">解析</button>
+    <div id="headerOutput"></div>
+  </section>
+  
+  <!-- 鍵一覧表示セクション（IndexedDB の内容） -->
+  <section id="keyListSection">
+    <h2>鍵一覧</h2>
+    <table id="keyTable">
+      <thead>
+        <tr>
+          <th>鍵名</th>
+          <th>種別</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- IndexedDB から読み込んだ鍵が表示される -->
+      </tbody>
+    </table>
+  </section>
+  
   <script>
-    // DataViewからリトルエンディアンの32bit整数を読み出す関数
+    // ── グローバル変数 ──
+    let db;
+    // keyStore: IndexedDB から読み込んだ各鍵情報を格納（鍵名をキーとするオブジェクト）
+    let keyStore = {};
+    // importedPrivateKeys: 復号用に登録された秘密鍵情報（各鍵は { name, identifier, cryptoKey, type }）
+    let importedPrivateKeys = [];
+    
+    // 定数
+    const RSA_ALGORITHM = "RSA-OAEP";
+    const RSA_HASH = "SHA-256";
+    const EC_ALGORITHM = "ECDH";
+    
+    // ── ユーティリティ関数 ──
+    function base64UrlToBase64(url) {
+      let b64 = url.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4 !== 0) { b64 += '='; }
+      return b64;
+    }
+    function arrayBufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let b of bytes) { binary += String.fromCharCode(b); }
+      return btoa(binary);
+    }
     function readInt32LE(view, offset) {
       return view.getInt32(offset, true);
     }
-
-    // Uint8Arrayを16進数文字列に変換する関数
-    function toHexString(byteArray) {
-      return Array.from(byteArray, byte => ('0' + byte.toString(16)).slice(-2)).join('');
+    
+    // ── IndexedDB 関連 ──
+    function initDB() {
+      const request = indexedDB.open("PubliCryptDB", 1);
+      request.onupgradeneeded = function(e) {
+        db = e.target.result;
+        if (!db.objectStoreNames.contains("keys")) {
+          db.createObjectStore("keys", { keyPath: "name" });
+        }
+      };
+      request.onsuccess = function(e) {
+        db = e.target.result;
+        loadKeysFromDB();
+      };
+      request.onerror = function(e) {
+        console.error("IndexedDB error", e);
+      };
     }
-
-    // 暗号化ファイルの構造を解析する関数
-    function parseEncryptedFile(arrayBuffer) {
-      const data = new Uint8Array(arrayBuffer);
-      const view = new DataView(arrayBuffer);
-      let offset = 0;
-      if (data.length < 4) {
-        throw new Error("ファイルサイズが不正です。");
+    
+    async function loadKeysFromDB() {
+      const transaction = db.transaction("keys", "readonly");
+      const store = transaction.objectStore("keys");
+      const req = store.getAll();
+      req.onsuccess = async function() {
+        const records = req.result;
+        for (const record of records) {
+          // 公開鍵のインポート
+          if (record.publicKeyJwk) {
+            if (record.type === "RSA") {
+              try {
+                const pubKey = await crypto.subtle.importKey(
+                  "jwk", record.publicKeyJwk,
+                  { name: RSA_ALGORITHM, hash: RSA_HASH },
+                  true, ["encrypt"]
+                );
+                if (!keyStore[record.name]) { keyStore[record.name] = {}; }
+                keyStore[record.name].publicKey = pubKey;
+                keyStore[record.name].type = "RSA";
+              } catch(err) {
+                console.error("RSA公開鍵インポートエラー", err);
+              }
+            } else if (record.type === "EC") {
+              try {
+                const pubKey = await crypto.subtle.importKey(
+                  "jwk", record.publicKeyJwk,
+                  { name: EC_ALGORITHM, namedCurve: record.publicKeyJwk.crv },
+                  true, []
+                );
+                if (!keyStore[record.name]) { keyStore[record.name] = {}; }
+                keyStore[record.name].publicKey = pubKey;
+                keyStore[record.name].type = "EC";
+              } catch(err) {
+                console.error("EC公開鍵インポートエラー", err);
+              }
+            }
+          }
+          // 秘密鍵のインポート（復号用に登録）
+          if (record.privateKeyJwk) {
+            if (record.type === "RSA") {
+              try {
+                const privKey = await crypto.subtle.importKey(
+                  "jwk", record.privateKeyJwk,
+                  { name: RSA_ALGORITHM, hash: RSA_HASH },
+                  true, ["decrypt"]
+                );
+                // 識別子は公開鍵の modulus（base64変換済み）
+                const identifier = record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "";
+                importedPrivateKeys.push({ name: record.name, identifier: identifier, cryptoKey: privKey, type: "RSA" });
+                if (!keyStore[record.name]) { keyStore[record.name] = {}; }
+                keyStore[record.name].privateKey = privKey;
+              } catch(err) {
+                console.error("RSA秘密鍵インポートエラー", err);
+              }
+            } else if (record.type === "EC") {
+              try {
+                const privKey = await crypto.subtle.importKey(
+                  "jwk", record.privateKeyJwk,
+                  { name: EC_ALGORITHM, namedCurve: record.publicKeyJwk.crv },
+                  true, ["deriveKey"]
+                );
+                // 公開鍵の raw データから識別子（base64）を作成
+                const raw = await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey);
+                const identifier = arrayBufferToBase64(raw);
+                importedPrivateKeys.push({ name: record.name, identifier: identifier, cryptoKey: privKey, type: "EC" });
+                if (!keyStore[record.name]) { keyStore[record.name] = {}; }
+                keyStore[record.name].privateKey = privKey;
+              } catch(err) {
+                console.error("EC秘密鍵インポートエラー", err);
+              }
+            }
+          }
+        }
+        refreshKeyList();
+      };
+      req.onerror = function(e) {
+        console.error("鍵一覧読み込みエラー", e);
+      };
+    }
+    
+    // IndexedDB 内の鍵一覧をテーブルに表示
+    function refreshKeyList() {
+      const tbody = document.getElementById("keyTable").querySelector("tbody");
+      tbody.innerHTML = "";
+      for (const keyName in keyStore) {
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.textContent = keyName;
+        const tdType = document.createElement("td");
+        tdType.textContent = keyStore[keyName].type;
+        tr.appendChild(tdName);
+        tr.appendChild(tdType);
+        tbody.appendChild(tr);
       }
-      // ヘッダーエントリー数（4バイト）
+    }
+    
+    // ── ファイルヘッダー解析 ──
+    let fileToAnalyze = null;
+    const fileDropArea = document.getElementById("fileDropArea");
+    const fileSelect = document.getElementById("fileSelect");
+    const headerOutputDiv = document.getElementById("headerOutput");
+    
+    fileDropArea.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      fileDropArea.style.borderColor = "#000";
+    });
+    fileDropArea.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      fileDropArea.style.borderColor = "#888";
+    });
+    fileDropArea.addEventListener("drop", (e) => {
+      e.preventDefault();
+      fileDropArea.style.borderColor = "#888";
+      if (e.dataTransfer.files.length > 0) {
+        fileToAnalyze = e.dataTransfer.files[0];
+        fileDropArea.textContent = fileToAnalyze.name;
+      }
+    });
+    fileSelect.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        fileToAnalyze = e.target.files[0];
+        fileDropArea.textContent = fileToAnalyze.name;
+      }
+    });
+    
+    document.getElementById("analyzeBtn").addEventListener("click", () => {
+      if (!fileToAnalyze) {
+        alert("解析するファイルを選択してください。");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const buffer = e.target.result;
+        parseFileHeader(buffer);
+      };
+      reader.readAsArrayBuffer(fileToAnalyze);
+    });
+    
+    // ファイルヘッダー解析処理
+    // ※ 各エントリーは以下の形式と仮定：
+    // RSAエントリー: [1バイト type=0] [4バイト identifier長] [identifier (UTF-8)] [4バイト encryptedKey長] [encryptedKey (スキップ)]
+    // ECエントリー: [1バイト type=1] [4バイト recipientId長] [recipientId (バイト列)] [4バイト ephemeralPub長] [ephemeralPub (スキップ)] [4バイト wrappingOutput長] [wrappingOutput (スキップ)]
+    function parseFileHeader(buffer) {
+      const fileBuffer = new Uint8Array(buffer);
+      const view = new DataView(buffer);
+      let offset = 0;
+      headerOutputDiv.innerHTML = "";
+      
+      if (fileBuffer.length < 4) {
+        headerOutputDiv.textContent = "ファイルが不正です。";
+        return;
+      }
+      
       const entryCount = readInt32LE(view, offset);
       offset += 4;
       const headerEntries = [];
+      const decoder = new TextDecoder();
+      
       for (let i = 0; i < entryCount; i++) {
-        if (offset >= data.length) break;
-        // 1バイト：エントリータイプ (0: RSA, 1: EC)
-        const typeByte = data[offset];
+        if (offset >= fileBuffer.length) break;
+        const entryType = fileBuffer[offset];
         offset += 1;
-        if (typeByte === 0) { // RSAの場合
-          // 識別子の長さとデータを取得
+        if (entryType === 0) { // RSAエントリー
           const idLen = readInt32LE(view, offset);
           offset += 4;
-          const identifierBytes = data.slice(offset, offset + idLen);
-          const identifier = toHexString(identifierBytes);
+          const idBytes = fileBuffer.slice(offset, offset + idLen);
           offset += idLen;
-          // 暗号化鍵の長さとデータを取得
-          const encryptedKeyLen = readInt32LE(view, offset);
+          const encKeyLen = readInt32LE(view, offset);
           offset += 4;
-          const encryptedKeyBytes = data.slice(offset, offset + encryptedKeyLen);
-          const encryptedKey = toHexString(encryptedKeyBytes);
-          offset += encryptedKeyLen;
-          headerEntries.push({
-            type: "RSA",
-            identifier: identifier,
-            encryptedKey: {
-              length: encryptedKeyLen,
-              value: encryptedKey
-            }
-          });
-        } else if (typeByte === 1) { // ECの場合
-          // 受信者識別子の長さとデータを取得
-          const recIdLen = readInt32LE(view, offset);
+          offset += encKeyLen; // encryptedKey 部分はスキップ
+          const identifier = decoder.decode(idBytes);
+          headerEntries.push({ type: "RSA", identifier: identifier });
+        } else if (entryType === 1) { // ECエントリー
+          const idLen = readInt32LE(view, offset);
           offset += 4;
-          const recipientIdBytes = data.slice(offset, offset + recIdLen);
-          const recipientId = toHexString(recipientIdBytes);
-          offset += recIdLen;
-          // エフェメラル公開鍵の長さとデータを取得
+          const recipientIdBytes = fileBuffer.slice(offset, offset + idLen);
+          offset += idLen;
           const ephLen = readInt32LE(view, offset);
           offset += 4;
-          const ephemeralPubBytes = data.slice(offset, offset + ephLen);
-          const ephemeralPub = toHexString(ephemeralPubBytes);
-          offset += ephLen;
-          // ラッピング出力の長さとデータを取得
+          offset += ephLen; // ephemeralPub 部分をスキップ
           const wrapLen = readInt32LE(view, offset);
           offset += 4;
-          const wrappingOutputBytes = data.slice(offset, offset + wrapLen);
-          const wrappingOutput = toHexString(wrappingOutputBytes);
-          offset += wrapLen;
-          headerEntries.push({
-            type: "EC",
-            recipientId: recipientId,
-            ephemeralPub: {
-              length: ephLen,
-              value: ephemeralPub
-            },
-            wrappingOutput: {
-              length: wrapLen,
-              value: wrappingOutput
-            }
-          });
+          offset += wrapLen; // wrappingOutput 部分をスキップ
+          const recipientIdStr = btoa(String.fromCharCode(...recipientIdBytes));
+          headerEntries.push({ type: "EC", identifier: recipientIdStr });
         } else {
-          throw new Error("不明なエントリータイプ: " + typeByte);
+          headerOutputDiv.innerHTML += "不明なエントリータイプが含まれています。<br>";
+          return;
         }
       }
-      // AES IV（固定12バイト）の取得
-      if (offset + 12 > data.length) {
-        throw new Error("AES IVが見つかりません。");
-      }
-      const aesIVBytes = data.slice(offset, offset + 12);
-      const aesIV = toHexString(aesIVBytes);
-      offset += 12;
-      // 暗号化ペイロード：内容の解析は行わず、存在とサイズのみを示す
-      const payloadEncLength = data.length - offset;
-      return {
-        entryCount,
-        headerEntries,
-        aesIV: { length: 12, value: aesIV },
-        payloadEnc: { length: payloadEncLength }
-      };
-    }
-
-    // 解析結果をHTMLに整形して表示する関数
-    function displayStructure(structure) {
-      let html = "<h2>暗号化ファイル構造</h2>";
-      html += "<p>ヘッダーエントリー数: " + structure.entryCount + "</p>";
-      html += "<h3>ヘッダーエントリー</h3>";
-      html += "<ul>";
-      structure.headerEntries.forEach((entry, index) => {
-        html += "<li><strong>エントリー " + (index + 1) + " (" + entry.type + "):</strong><br>";
-        if (entry.type === "RSA") {
-          html += "・識別子: <span class='keyData'>" + entry.identifier + "</span><br>";
-          html += "・暗号化鍵: (長さ " + entry.encryptedKey.length + " バイト)<br>";
-          html += "<span class='keyData'>" + entry.encryptedKey.value + "</span>";
-        } else if (entry.type === "EC") {
-          html += "・受信者識別子: <span class='keyData'>" + entry.recipientId + "</span><br>";
-          html += "・エフェメラル公開鍵: (長さ " + entry.ephemeralPub.length + " バイト)<br>";
-          html += "<span class='keyData'>" + entry.ephemeralPub.value + "</span><br>";
-          html += "・ラッピング出力: (長さ " + entry.wrappingOutput.length + " バイト)<br>";
-          html += "<span class='keyData'>" + entry.wrappingOutput.value + "</span>";
+      
+      let html = "<h3>ヘッダー情報</h3><ul>";
+      headerEntries.forEach((entry, index) => {
+        html += `<li>
+                   <div class="entry-info">エントリー ${index+1}</div>
+                   <div class="entry-info">タイプ: ${entry.type}</div>
+                   <div class="entry-info identifier">識別子: ${entry.identifier}</div>`;
+        const match = importedPrivateKeys.find(k => {
+          if (entry.type === "RSA" && k.type === "RSA") {
+            return k.identifier === entry.identifier;
+          } else if (entry.type === "EC" && k.type === "EC") {
+            return k.identifier === entry.identifier;
+          }
+          return false;
+        });
+        if (match) {
+          html += `<div class="matched-key">一致する秘密鍵: ${match.name} [${match.type}]</div>`;
         }
-        html += "</li>";
+        html += `</li>`;
       });
       html += "</ul>";
-      html += "<h3>AES IV</h3>";
-      html += "<p>存在: (12 バイト)<br>";
-      html += "IV: <span class='keyData'>" + structure.aesIV.value + "</span></p>";
-      html += "<h3>暗号化ペイロード</h3>";
-      html += "<p>存在: " + structure.payloadEnc.length + " バイト</p>";
-      document.getElementById("structureOutput").innerHTML = html;
+      headerOutputDiv.innerHTML = html;
     }
-
-    // ファイル選択時の処理
-    document.getElementById("fileInput").addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const structure = parseEncryptedFile(arrayBuffer);
-        displayStructure(structure);
-      } catch (err) {
-        alert("解析エラー: " + err.message);
-      }
-    });
-
-    // ドラッグ＆ドロップによるファイル読み込み設定
-    function setupDragAndDrop() {
-      const dropArea = document.getElementById("dropArea");
-      dropArea.addEventListener("dragover", function(e) {
-        e.preventDefault();
-        dropArea.style.borderColor = "#000";
-      });
-      dropArea.addEventListener("dragleave", function(e) {
-        e.preventDefault();
-        dropArea.style.borderColor = "#888";
-      });
-      dropArea.addEventListener("drop", async function(e) {
-        e.preventDefault();
-        dropArea.style.borderColor = "#888";
-        const file = e.dataTransfer.files[0];
-        if (!file) return;
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const structure = parseEncryptedFile(arrayBuffer);
-          displayStructure(structure);
-        } catch (err) {
-          alert("解析エラー: " + err.message);
-        }
-      });
-    }
-
-    window.addEventListener("load", setupDragAndDrop);
+    
+    window.addEventListener("load", initDB);
   </script>
 </body>
 </html>
