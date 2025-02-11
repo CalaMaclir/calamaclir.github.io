@@ -133,7 +133,8 @@
     const RSA_HASH = "SHA-256";
     const RSA_MODULUS_LENGTH = 4096;
     const EC_ALGORITHM = "ECDH";
-    const EC_NAMED_CURVE = "P-521";
+    // デフォルトの楕円曲線を定数として定義（例："P-521"）
+    const DEFAULT_EC_CURVE = "P-521";
     const AES_ALGORITHM = "AES-GCM";
     const AES_KEY_LENGTH = 256;
     const AES_IV_LENGTH = 12;
@@ -417,7 +418,8 @@
       const xmlDoc = parser.parseFromString(xmlString, "application/xml");
       const x = getXmlTagContent(xmlDoc, "X");
       const y = getXmlTagContent(xmlDoc, "Y");
-      const curve = getXmlTagContent(xmlDoc, "Curve") || EC_NAMED_CURVE;
+      // "Curve"要素がなければ、定数 DEFAULT_EC_CURVE を利用
+      const curve = getXmlTagContent(xmlDoc, "Curve") || DEFAULT_EC_CURVE;
       if (!x || !y) {
         throw new Error("公開鍵XMLに X または Y が見つかりません");
       }
@@ -438,7 +440,8 @@
       const x = getXmlTagContent(xmlDoc, "X");
       const y = getXmlTagContent(xmlDoc, "Y");
       const d = getXmlTagContent(xmlDoc, "D");
-      const curve = getXmlTagContent(xmlDoc, "Curve") || EC_NAMED_CURVE;
+      // "Curve"要素がなければ、定数 DEFAULT_EC_CURVE を利用
+      const curve = getXmlTagContent(xmlDoc, "Curve") || DEFAULT_EC_CURVE;
       if (!x || !y || !d) {
         throw new Error("秘密鍵XMLに必要な要素が見つかりません");
       }
@@ -615,8 +618,9 @@
           }
         } else if (pub.type === "EC") {
           try {
+            // インポートされた公開鍵の curve を使用して一時鍵ペアを生成
             const ephemeralKeyPair = await crypto.subtle.generateKey(
-              { name: EC_ALGORITHM, namedCurve: EC_NAMED_CURVE },
+              { name: EC_ALGORITHM, namedCurve: pub.curve },
               true, ["deriveKey"]
             );
             const wrappingKey = await crypto.subtle.deriveKey(
@@ -756,9 +760,10 @@
             const entryIdBase64 = btoa(String.fromCharCode(...entry.recipientId));
             for (let priv of importedPrivateKeys.filter(k => k.type === "EC")) {
               if (priv.identifier === entryIdBase64) {
+                // 対応する秘密鍵の curve を keyStore から取得して使用
                 const ephemeralPubKey = await crypto.subtle.importKey(
                   "raw", entry.ephemeralPub,
-                  { name: EC_ALGORITHM, namedCurve: EC_NAMED_CURVE },
+                  { name: EC_ALGORITHM, namedCurve: keyStore[priv.name].curve },
                   true, []
                 );
                 const wrappingKey = await crypto.subtle.deriveKey(
@@ -868,15 +873,16 @@
         }
       } else if (algType === "EC") {
         try {
+          // 楕円曲線鍵生成時は、定数 DEFAULT_EC_CURVE を使用
           const keyPair = await crypto.subtle.generateKey(
-            { name: EC_ALGORITHM, namedCurve: EC_NAMED_CURVE },
+            { name: EC_ALGORITHM, namedCurve: DEFAULT_EC_CURVE },
             true, ["deriveKey", "deriveBits"]
           );
           keyStore[name] = { 
             publicKey: keyPair.publicKey, 
             privateKey: keyPair.privateKey, 
             type: "EC",
-            curve: EC_NAMED_CURVE
+            curve: DEFAULT_EC_CURVE
           };
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
