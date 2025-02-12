@@ -597,9 +597,22 @@
         alert("暗号化のために公開鍵がインポートされていません。");
         return;
       }
+
+      // ★ 重複する公開鍵を除外する処理 ★
+      const uniquePublicKeys = [];
+      const seen = new Set();
+      for (let pub of encryptionPublicKeys) {
+        if (seen.has(pub.identifier)) {
+          continue;
+        }
+        seen.add(pub.identifier);
+        uniquePublicKeys.push(pub);
+      }
+      
       const entries = [];
       const encoder = new TextEncoder();
-      for (let pub of encryptionPublicKeys) {
+      // uniquePublicKeys を使って暗号化処理を実施
+      for (let pub of uniquePublicKeys) {
         if (pub.type === "RSA") {
           try {
             const encKeyBuffer = await crypto.subtle.encrypt(
