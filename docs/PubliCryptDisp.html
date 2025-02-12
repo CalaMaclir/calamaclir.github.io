@@ -329,17 +329,25 @@
                    <div class="entry-info">エントリー ${index+1}</div>
                    <div class="entry-info">タイプ: ${entry.type}</div>
                    <div class="entry-info identifier">識別子: ${entry.identifier}</div>`;
-        const match = importedPrivateKeys.find(k => {
-          if (entry.type === "RSA" && k.type === "RSA") {
-            return k.identifier === entry.identifier;
-          } else if (entry.type === "EC" && k.type === "EC") {
-            return k.identifier === entry.identifier;
-          }
-          return false;
-        });
-        if (match) {
-          html += `<div class="matched-key">一致する秘密鍵: ${match.name} [${match.type}]</div>`;
-        }
+					const match = importedPrivateKeys.find(k => {
+					  if (entry.type === "RSA" && k.type === "RSA") {
+					    return k.identifier === entry.identifier;
+					  } else if (entry.type === "EC" && k.type === "EC") {
+					    return k.identifier === entry.identifier;
+					  }
+					  return false;
+					});
+					if (match) {
+					  let keyInfo = "";
+					  if (match.type === "RSA") {
+					    // RSAの場合は、keyStore に保存されているビット長情報を利用
+					    keyInfo = keyStore[match.name].bitLength ? keyStore[match.name].bitLength + " bit" : "N/A";
+					  } else if (match.type === "EC") {
+					    // ECの場合は、keyStore に保存されている曲線名情報を利用
+					    keyInfo = keyStore[match.name].curve ? keyStore[match.name].curve : "N/A";
+					  }
+					  html += `<div class="matched-key">一致する秘密鍵: ${match.name} [${match.type}] - 鍵情報: ${keyInfo}</div>`;
+					}
         html += `</li>`;
       });
       html += "</ul>";
