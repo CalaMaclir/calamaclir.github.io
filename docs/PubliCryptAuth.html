@@ -155,7 +155,7 @@
     // ── グローバル変数 ──
     let db;
     let webauthnKey = null;       // WebAuthn により得られる AES鍵（ログイン済みの場合のみ）
-    let webauthnUser = null;      // WebAuthn登録／ログイン時に得られるユーザー名
+    let webauthnUser = null;      // WebAuthn 登録／ログイン時に得られるユーザー名
     // keyStore: 各鍵は { publicKey, privateKey, type, bitLength（RSAの場合）/curve（ECの場合）、encrypted: true/false, loginName (暗号化時のユーザー名) }
     const keyStore = {};
     // importedPrivateKeys は復号用に登録
@@ -165,7 +165,44 @@
     // filesToProcess：ドラッグ＆ドロップ等で選択されたファイル
     const filesToProcess = [];
 
-    // ── UI補助関数 ──
+    // ── IndexedDB 初期化（"keys" と "users" ストアを作成） ──
+    function initDB() {
+      const request = indexedDB.open("PubliCryptDB", 1);
+      request.onupgradeneeded = function(e) {
+        db = e.target.result;
+        if (!db.objectStoreNames.contains("keys")) {
+          db.createObjectStore("keys", { keyPath: "name" });
+        }
+        if (!db.objectStoreNames.contains("users")) {
+          // "users" ストアは userHandle（base64文字列）をキーとする
+          db.createObjectStore("users", { keyPath: "handle" });
+        }
+      };
+      request.onsuccess = function(e) { db = e.target.result; loadKeysFromDB(); };
+      request.onerror = function(e) { console.error("IndexedDB error", e); };
+    }
+
+    // ── ユーザー情報用 DB 関数 ──
+    function storeUserMapping(handle, userName) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction("users", "readwrite");
+        const store = transaction.objectStore("users");
+        const req = store.put({ handle, userName });
+        req.onsuccess = () => resolve();
+        req.onerror = (e) => reject(e);
+      });
+    }
+    function getUserMapping(handle) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction("users", "readonly");
+        const store = transaction.objectStore("users");
+        const req = store.get(handle);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    // ── UI 補助関数 ──
     function showSpinner() { document.getElementById('spinner').style.display = 'block'; }
     function hideSpinner() { document.getElementById('spinner').style.display = 'none'; }
     function clearExportArea() { document.getElementById("exportArea").innerHTML = ""; }
@@ -224,63 +261,6 @@
       return binaryString.length * 8;
     }
 
-    // ── IndexedDB 関連 ──
-    function initDB() {
-      const request = indexedDB.open("PubliCryptDB", 1);
-      request.onupgradeneeded = function(e) {
-        db = e.target.result;
-        if (!db.objectStoreNames.contains("keys")) { db.createObjectStore("keys", { keyPath: "name" }); }
-      };
-      request.onsuccess = function(e) { db = e.target.result; loadKeysFromDB(); };
-      request.onerror = function(e) { console.error("IndexedDB error", e); };
-    }
-    function storeKeyRecord(record) {
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction("keys", "readwrite");
-        const store = transaction.objectStore("keys");
-        const req = store.put(record);
-        req.onsuccess = () => resolve();
-        req.onerror = (e) => reject(e);
-      });
-    }
-    function deleteKeyRecord(name) {
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction("keys", "readwrite");
-        const store = transaction.objectStore("keys");
-        const req = store.delete(name);
-        req.onsuccess = () => resolve();
-        req.onerror = (e) => reject(e);
-      });
-    }
-    function getKeyRecord(name) {
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction("keys", "readonly");
-        const store = transaction.objectStore("keys");
-        const req = store.get(name);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = (e) => reject(e);
-      });
-    }
-
-    // ── WebAuthn による鍵ペアラッピング用関数 ──
-    async function encryptKeyPairJWK(publicJwk, privateJwk) {
-      const data = JSON.stringify({ publicJwk, privateJwk });
-      const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
-      const encBuffer = await crypto.subtle.encrypt(
-        { name: AES_ALGORITHM, iv },
-        webauthnKey,
-        new TextEncoder().encode(data)
-      );
-      return { iv: arrayBufferToBase64(iv), ciphertext: arrayBufferToBase64(encBuffer) };
-    }
-    async function decryptKeyPairJWK(ivBase64, ciphertextBase64) {
-      const iv = base64ToUint8Array(ivBase64);
-      const ciphertext = base64ToUint8Array(ciphertextBase64);
-      const decBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, webauthnKey, ciphertext);
-      const text = new TextDecoder().decode(decBuffer);
-      return JSON.parse(text);
-    }
-
     // ── 鍵ペア保存 ──
     // WebAuthn鍵があればJWKを暗号化して保存し、loginNameとして webauthnUser を記録する
     async function storeKeyPair(name, type, publicJwk, privateJwk) {
@@ -303,7 +283,6 @@
         const records = req.result;
         for (const record of records) {
           if (record.encrypted) {
-            // 暗号化された鍵は、WebAuthn鍵があれば復号、なければ最低限状態を登録
             if (webauthnKey) {
               try {
                 const decrypted = await decryptKeyPairJWK(record.iv, record.encryptedKeyPair);
@@ -426,6 +405,16 @@
       };
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
+        // userHandle の取得。登録時は userHandle が返されない場合があるので、credential.id を代用
+        let rawHandle;
+        if (credential.response.userHandle) {
+          rawHandle = new Uint8Array(credential.response.userHandle);
+        } else {
+          rawHandle = new TextEncoder().encode(credential.id);
+        }
+        const handleBase64 = arrayBufferToBase64(rawHandle);
+        // ユーザー名と userHandle のマッピングを IndexedDB の "users" ストアに保存
+        await storeUserMapping(handleBase64, userName);
         // 登録時は、clientDataJSON のハッシュから AES鍵を生成
         const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
@@ -448,15 +437,18 @@
         const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
         const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-        // userHandle を Uint8Array 経由で UTF-8 でデコードする
+        let rawHandle;
         if (assertion.response.userHandle) {
-          webauthnUser = new TextDecoder("utf-8").decode(new Uint8Array(assertion.response.userHandle));
+          rawHandle = new Uint8Array(assertion.response.userHandle);
         } else {
-          webauthnUser = "不明";
+          rawHandle = new TextEncoder().encode(assertion.id);
         }
+        const handleBase64 = arrayBufferToBase64(rawHandle);
+        // 取得した handle を用いてユーザー名を "users" ストアから取得
+        const mapping = await getUserMapping(handleBase64);
+        webauthnUser = mapping ? mapping.userName : "不明";
         updateLoginStatus();
         alert("WebAuthnログイン成功: " + webauthnUser);
-        // ログイン後、一覧を再描画して「鍵ペア暗号化」ボタンが表示されるようにする
         refreshKeyList();
       } catch (err) {
         alert("WebAuthnログインエラー: " + err.message);
@@ -977,7 +969,7 @@
           tdKeyInfo.textContent = keyStore[name].curve ? keyStore[name].curve : "N/A";
         } else { tdKeyInfo.textContent = "N/A"; }
         tr.appendChild(tdKeyInfo);
-        // 状態列
+        // 状態列：暗号化済みの場合は、loginName（ユーザー名）を表示
         const tdStatus = document.createElement("td");
         if (keyStore[name].encrypted) {
           tdStatus.textContent = "暗号化済み (ログイン: " + (keyStore[name].loginName || "不明") + ")";
