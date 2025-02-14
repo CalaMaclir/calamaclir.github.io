@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PubliCrypt</title>
+  <!-- 共通モジュールの読み込み -->
+  <script type="module" src="common.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1, h2, h3 { margin-bottom: 10px; }
+    /* ファイルドラッグ領域 */
+    #fileDropArea {
+      border: 2px dashed #888;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .key-section { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    .warning-section {
+      border: 2px solid red;
+      padding: 10px;
+      margin-bottom: 20px;
+      background-color: #ffecec;
+    }
+    button { margin: 5px; }
+    ul { list-style: none; padding-left: 0; }
+    li { margin-bottom: 5px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    textarea { width: 100%; }
+    section { margin-bottom: 30px; }
+    #spinner {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      z-index: 1000;
+      text-align: center;
+      font-size: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <h1>PubliCrypt</h1>
+  <div>鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます。</div>
+  <div><a href="https://note.com/maclir_cala/n/n170b2f13c083" target=_blank>簡単な説明はこちらをごらんください</a></div>
+  <div id="spinner">処理中...</div>
+
+  <!-- ファイル暗号化／復号セクション -->
+  <section id="fileSection">
+    <h2>暗号化／復号の対象ファイル</h2>
+    <div id="fileDropArea">ここにファイルをドロップ</div>
+    <input type="file" id="fileSelect" multiple style="margin-top:10px;">
+    <ul id="fileList"></ul>
+    <div class="key-section">
+      <h2>復号</h2>
+      <div>秘密鍵は鍵一覧から自動選択されます</div>
+      <button id="decryptBtn">復号</button>
+    </div>
+  </section>
+
+  <!-- 公開鍵インポート（暗号化に使用） -->
+  <section id="keyImport">
+    <div class="key-section">
+      <h2>暗号化</h2>
+      <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
+      <h3>公開鍵選択 (.pubkey XML)</h3>
+      <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+      <button id="encryptBtn">暗号化</button>
+      <ul id="pubKeyList"></ul>
+    </div>
+  </section>
+
+  <!-- 秘密鍵インポート -->
+  <section id="privKeyImport">
+    <div class="key-section">
+      <h2>秘密鍵インポート (.pvtkey XML)</h2>
+      <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
+      <ul id="privKeyList"></ul>
+    </div>
+  </section>
+
+  <!-- 鍵管理セクション -->
+  <section id="keyManagement">
+    <div class="key-section">
+      <h2>鍵管理</h2>
+      <div>
+        <label for="keyNameInput">鍵名 (英数字、_, -, @, . のみ): </label>
+        <input type="text" id="keyNameInput" placeholder="例: MyKey01">
+        <select id="keyAlgorithmSelect">
+          <option value="EC">楕円曲線 (ECDH)[推奨]</option>
+          <option value="RSA">RSA (RSA-OAEP)</option>
+        </select>
+        <button id="generateKeyButton">鍵生成</button>
+      </div>
+      <div>
+        <h3>鍵一覧</h3>
+        <table id="keyTable">
+          <thead>
+            <tr>
+              <th>鍵名</th>
+              <th>種別</th>
+              <th>鍵情報</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="exportArea"></div>
+    </div>
+  </section>
+
+  <!-- 取り扱い注意！セクション：IndexedDB初期化 -->
+  <section id="resetSection" class="warning-section">
+    <h2>取り扱い注意！</h2>
+    <p>
+      以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
+      この操作は元に戻せませんので、十分に注意してください。
+    </p>
+    <button id="resetDBBtn" style="background-color: red; color: white;">鍵一覧初期化</button>
+  </section>
+
+  <script type="module">
+    import * as common from './common.js';
+
+    // グローバル変数の定義（各種鍵管理）
+    window.keyStore = {};
+    window.importedPrivateKeys = [];
+    window.encryptionPublicKeys = [];
+    window.filesToProcess = [];
+
+    // IndexedDB 初期化
+    common.initDB(() => {
+      loadKeysFromDB();
+    });
+
+    async function loadKeysFromDB() {
+      // IndexedDB から鍵を読み込み、keyStore や importedPrivateKeys に反映する処理（各自実装）
+      refreshKeyList();
+    }
+
+    function refreshKeyList() {
+      const tbody = document.getElementById("keyTable").querySelector("tbody");
+      tbody.innerHTML = "";
+      for (const name in window.keyStore) {
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.textContent = name;
+        const tdType = document.createElement("td");
+        tdType.textContent = window.keyStore[name].type;
+        const tdKeyInfo = document.createElement("td");
+        if (window.keyStore[name].type === "RSA") {
+          tdKeyInfo.textContent = window.keyStore[name].bitLength ? window.keyStore[name].bitLength + " bit" : "N/A";
+        } else if (window.keyStore[name].type === "EC") {
+          tdKeyInfo.textContent = window.keyStore[name].curve ? window.keyStore[name].curve : "N/A";
+        } else {
+          tdKeyInfo.textContent = "N/A";
+        }
+        const tdOps = document.createElement("td");
+        const exportPubBtn = document.createElement("button");
+        exportPubBtn.textContent = "公開鍵エクスポート";
+        exportPubBtn.onclick = () => exportKey(name, "public");
+        const exportPrivBtn = document.createElement("button");
+        exportPrivBtn.textContent = "秘密鍵エクスポート";
+        exportPrivBtn.style.backgroundColor = "#ffcccc";
+        exportPrivBtn.style.border = "2px solid red";
+        exportPrivBtn.style.fontWeight = "bold";
+        exportPrivBtn.onclick = () => {
+          if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。")) {
+            exportKey(name, "private");
+          }
+        };
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "削除";
+        deleteBtn.onclick = () => deleteKey(name);
+        tdOps.appendChild(exportPubBtn);
+        tdOps.appendChild(document.createTextNode("　"));
+        tdOps.appendChild(exportPrivBtn);
+        tdOps.appendChild(document.createTextNode("　"));
+        tdOps.appendChild(deleteBtn);
+        tr.appendChild(tdName);
+        tr.appendChild(tdType);
+        tr.appendChild(tdKeyInfo);
+        tr.appendChild(tdOps);
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function exportKey(name, type) {
+      const keyPair = window.keyStore[name];
+      let key;
+      if (type === "public") {
+        key = keyPair.publicKey;
+      } else {
+        key = keyPair.privateKey;
+      }
+      try {
+        const jwk = await crypto.subtle.exportKey("jwk", key);
+        let xml;
+        if (type === "public") {
+          xml = common.convertPublicJwkToXml(jwk);
+        } else {
+          xml = common.convertPrivateJwkToXml(jwk);
+        }
+        const exportArea = document.getElementById("exportArea");
+        exportArea.innerHTML = `<h3>${name} の ${type === "public" ? "公開鍵" : "秘密鍵"} エクスポート結果</h3>`;
+        const textarea = document.createElement("textarea");
+        textarea.rows = 10;
+        textarea.value = xml;
+        exportArea.appendChild(textarea);
+        const blob = new Blob([xml], { type: "application/xml" });
+        const url = URL.createObjectURL(blob);
+        const downloadLink = document.createElement("a");
+        downloadLink.href = url;
+        downloadLink.download = name + (type === "public" ? ".pubkey" : ".pvtkey");
+        downloadLink.textContent = "Download " + (type === "public" ? "公開鍵" : "秘密鍵");
+        exportArea.appendChild(document.createElement("br"));
+        exportArea.appendChild(downloadLink);
+      } catch (e) {
+        alert("エクスポートエラー: " + e);
+      }
+    }
+
+    async function deleteKey(name) {
+      if (!confirm("鍵 " + name + " を削除してよろしいですか？")) return;
+      try {
+        await common.deleteKeyRecord(name);
+      } catch (e) {
+        console.error("DB削除エラー", e);
+      }
+      delete window.keyStore[name];
+      const privIndex = window.importedPrivateKeys.findIndex(k => k.name === name);
+      if (privIndex >= 0) window.importedPrivateKeys.splice(privIndex, 1);
+      alert("鍵 " + name + " を削除しました");
+      const exportArea = document.getElementById("exportArea");
+      if (exportArea) exportArea.innerHTML = "";
+      refreshKeyList();
+    }
+
+    // ファイルドラッグ＆ドロップ／選択処理
+    const fileDropArea = document.getElementById('fileDropArea');
+    const fileListElem = document.getElementById('fileList');
+    fileDropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      fileDropArea.style.borderColor = "#000";
+    });
+    fileDropArea.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      fileDropArea.style.borderColor = "#888";
+    });
+    fileDropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      fileDropArea.style.borderColor = "#888";
+      const files = e.dataTransfer.files;
+      for (let file of files) {
+        window.filesToProcess.push(file);
+        const li = document.createElement('li');
+        li.textContent = file.name;
+        fileListElem.appendChild(li);
+      }
+    });
+    document.getElementById('fileSelect').addEventListener('change', (e) => {
+      const files = e.target.files;
+      for (let file of files) {
+        window.filesToProcess.push(file);
+        const li = document.createElement('li');
+        li.textContent = file.name;
+        fileListElem.appendChild(li);
+      }
+    });
+
+    document.getElementById('encryptBtn').addEventListener('click', async () => {
+      if (window.filesToProcess.length === 0) {
+        alert("暗号化するファイルを選択してください。");
+        return;
+      }
+      if (window.encryptionPublicKeys.length === 0) {
+        alert("暗号化用の公開鍵がインポートされていません。");
+        return;
+      }
+      try {
+        const blob = await common.encryptFile(window.filesToProcess[0], window.encryptionPublicKeys);
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = window.filesToProcess[0].name + ".crypted";
+        a.click();
+      } catch (err) {
+        alert("暗号化エラー: " + err.message);
+      }
+    });
+
+    document.getElementById('decryptBtn').addEventListener('click', async () => {
+      if (window.filesToProcess.length === 0) {
+        alert("復号するファイルを選択してください。");
+        return;
+      }
+      try {
+        const result = await common.decryptFile(window.filesToProcess[0], window.importedPrivateKeys, window.keyStore);
+        const blob = new Blob([result.fileContent], { type: "application/octet-stream" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = result.fileName;
+        a.click();
+      } catch (err) {
+        alert("復号エラー: " + err.message);
+      }
+    });
+
+    // 秘密鍵ファイル入力
+    document.getElementById('privKeyInput').addEventListener('change', async (e) => {
+      const files = e.target.files;
+      for (let file of files) {
+        const text = await file.text();
+        try {
+          let keyName = file.name;
+          if (keyName.toLowerCase().endsWith(".pvtkey")) {
+            keyName = keyName.slice(0, -7);
+          }
+          if (window.keyStore[keyName]) {
+            alert("秘密鍵 " + keyName + " は既に存在するため、インポートをスキップします。");
+            continue;
+          }
+          const keyPair = await common.importPrivateKeyFromXmlUnified(text, keyName);
+          window.keyStore[keyPair.name] = { 
+            publicKey: keyPair.publicKey, 
+            privateKey: keyPair.privateKey, 
+            type: keyPair.type,
+            bitLength: keyPair.bitLength,
+            curve: keyPair.curve
+          };
+          window.importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
+          const li = document.createElement('li');
+          li.textContent = keyPair.name + " (" + keyPair.type + ")";
+          document.getElementById('privKeyList').appendChild(li);
+          const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+          const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+          await common.storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
+          refreshKeyList();
+          common.clearExportArea();
+          alert("秘密鍵インポート完了");
+        } catch(err) {
+          alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
+        }
+      }
+      e.target.value = "";
+    });
+
+    // 公開鍵ファイル入力
+    document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
+      const files = e.target.files;
+      for (let file of files) {
+        const text = await file.text();
+        try {
+          const pubKey = await common.importPublicKeyFromXmlUnified(text, file.name);
+          window.encryptionPublicKeys.push(pubKey);
+          const li = document.createElement('li');
+          li.textContent = pubKey.name + " (" + pubKey.type + ")";
+          document.getElementById('pubKeyList').appendChild(li);
+        } catch(err) {
+          alert("公開鍵 " + file.name + " のインポートエラー: " + err.message);
+        }
+      }
+      e.target.value = "";
+    });
+
+    document.getElementById("generateKeyButton").addEventListener("click", async function() {
+      const keyName = document.getElementById("keyNameInput").value.trim();
+      const algSelect = document.getElementById("keyAlgorithmSelect");
+      const algType = algSelect.value;
+      await common.generateKeyPair(keyName, algType, window.keyStore, window.importedPrivateKeys);
+      refreshKeyList();
+    });
+
+    document.getElementById("resetDBBtn").addEventListener('click', () => {
+      if (!confirm("本当に全ての鍵一覧を削除しますか？ この操作は元に戻せません。")) return;
+      if (common.db) { common.db.close(); }
+      const req = indexedDB.deleteDatabase("PubliCryptDB");
+      req.onsuccess = function() {
+        alert("鍵一覧が初期化されました。");
+        window.keyStore = {};
+        window.importedPrivateKeys = [];
+        common.clearExportArea();
+        common.initDB(() => {
+          refreshKeyList();
+        });
+      };
+      req.onerror = function(e) {
+        alert("鍵一覧の初期化中にエラーが発生しました。");
+      };
+      req.onblocked = function(e) {
+        alert("他のタブで開いている可能性があります。");
+      };
+    });
+  </script>
+</body>
+</html>
