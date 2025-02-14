@@ -413,7 +413,7 @@
           rawHandle = new TextEncoder().encode(credential.id);
         }
         const handleBase64 = arrayBufferToBase64(rawHandle);
-        // ユーザー名と userHandle のマッピングを IndexedDB の "users" ストアに保存
+        // ユーザー名と userHandle のマッピングを "users" ストアに保存
         await storeUserMapping(handleBase64, userName);
         // 登録時は、clientDataJSON のハッシュから AES鍵を生成
         const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
@@ -444,9 +444,14 @@
           rawHandle = new TextEncoder().encode(assertion.id);
         }
         const handleBase64 = arrayBufferToBase64(rawHandle);
-        // 取得した handle を用いてユーザー名を "users" ストアから取得
-        const mapping = await getUserMapping(handleBase64);
-        webauthnUser = mapping ? mapping.userName : "不明";
+        let mapping;
+        try {
+          mapping = await getUserMapping(handleBase64);
+        } catch (e) {
+          // ユーザーストアが存在しないなどのエラーの場合は、デフォルトで "(不明)" を設定
+          mapping = null;
+        }
+        webauthnUser = mapping ? mapping.userName : "(不明)";
         updateLoginStatus();
         alert("WebAuthnログイン成功: " + webauthnUser);
         refreshKeyList();
@@ -1113,6 +1118,81 @@
     });
 
     window.addEventListener("load", () => { initDB(); });
+
+    // ── WebAuthn 登録／ログイン処理 ──
+    async function webAuthnRegister() {
+      const userName = document.getElementById("webauthnUserName").value.trim();
+      if (!userName) { alert("ユーザー名を入力してください。"); return; }
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const userId = new Uint8Array(16);
+      window.crypto.getRandomValues(userId);
+      const publicKeyOptions = {
+        challenge,
+        rp: { name: "PubliCrypt", id: window.location.hostname },
+        user: { id: userId, name: userName, displayName: userName },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "preferred" },
+        timeout: 60000,
+        attestation: "none"
+      };
+      try {
+        const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
+        // 登録時は、userHandle が返されない場合は credential.id を代用
+        let rawHandle;
+        if (credential.response.userHandle) {
+          rawHandle = new Uint8Array(credential.response.userHandle);
+        } else {
+          rawHandle = new TextEncoder().encode(credential.id);
+        }
+        const handleBase64 = arrayBufferToBase64(rawHandle);
+        // ユーザー名と userHandle のマッピングを "users" ストアに保存
+        await storeUserMapping(handleBase64, userName);
+        // 登録時は、clientDataJSON のハッシュから AES鍵を生成
+        const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
+        webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
+        webauthnUser = userName;
+        updateLoginStatus();
+        alert("WebAuthn登録完了: " + webauthnUser);
+      } catch (err) {
+        alert("WebAuthn登録エラー: " + err.message);
+      }
+    }
+    async function webAuthnLogin() {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const publicKeyOptions = {
+        challenge,
+        timeout: 60000,
+        userVerification: "preferred"
+      };
+      try {
+        const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
+        const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
+        webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
+        let rawHandle;
+        if (assertion.response.userHandle) {
+          rawHandle = new Uint8Array(assertion.response.userHandle);
+        } else {
+          rawHandle = new TextEncoder().encode(assertion.id);
+        }
+        const handleBase64 = arrayBufferToBase64(rawHandle);
+        let mapping;
+        try {
+          mapping = await getUserMapping(handleBase64);
+        } catch (e) {
+          mapping = null;
+        }
+        webauthnUser = mapping ? mapping.userName : "(不明)";
+        updateLoginStatus();
+        alert("WebAuthnログイン成功: " + webauthnUser);
+        refreshKeyList();
+      } catch (err) {
+        alert("WebAuthnログインエラー: " + err.message);
+      }
+    }
+    document.getElementById("webauthnRegisterButton").addEventListener("click", webAuthnRegister);
+    document.getElementById("webauthnLoginButton").addEventListener("click", webAuthnLogin);
   </script>
 </body>
 </html>
