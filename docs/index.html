@@ -824,6 +824,30 @@
       }
     }
 
+    // ── ボタン押下処理 ──
+    document.getElementById('encryptBtn').addEventListener('click', async () => {
+      if (filesToProcess.length === 0) {
+        alert("暗号化するファイルがありません。");
+        return;
+      }
+      showSpinner();
+      for (let file of filesToProcess) {
+        await encryptFile(file);
+      }
+      resetUI();
+    });
+    document.getElementById('decryptBtn').addEventListener('click', async () => {
+      if (filesToProcess.length === 0) {
+        alert("復号するファイルがありません。");
+        return;
+      }
+      showSpinner();
+      for (let file of filesToProcess) {
+        await decryptFile(file);
+      }
+      resetUI();
+    });
+
     // ── 鍵生成（統合版）：選択されたアルゴリズムに応じて鍵ペア生成 ──
     async function generateKeyPair(name, algType) {
       if (algType === "RSA") {
