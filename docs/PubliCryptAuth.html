@@ -60,8 +60,81 @@
   <div><a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank">簡単な説明はこちらをごらんください</a></div>
   <div id="spinner">処理中...</div>
 
-  <!-- 以下、ファイル暗号化／復号、鍵インポート・管理等の各セクションのコードは従来通り -->
-  <!-- ...（ファイル暗号化／復号、鍵インポートなどのセクションは省略）... -->
+  <!-- ファイル暗号化／復号セクション -->
+  <section id="fileSection">
+    <h2>暗号化／復号の対象ファイル</h2>
+    <div id="fileDropArea">ここにファイルをドロップ</div>
+    <input type="file" id="fileSelect" multiple style="margin-top:10px;">
+    <ul id="fileList"></ul>
+    <div class="key-section">
+      <h2>復号</h2>
+      <div>秘密鍵は鍵一覧から自動選択されます</div>
+      <button id="decryptBtn">復号</button>
+    </div>
+  </section>
+
+  <!-- 公開鍵インポート（暗号化に使用） -->
+  <section id="keyImport">
+    <div class="key-section">
+      <h2>暗号化</h2>
+      <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
+      <h3>公開鍵選択 (.pubkey XML)</h3>
+      <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+      <button id="encryptBtn">暗号化</button>
+      <ul id="pubKeyList"></ul>
+    </div>
+  </section>
+
+  <!-- 秘密鍵インポート -->
+  <section id="privKeyImport">
+    <div class="key-section">
+      <h2>秘密鍵インポート (.pvtkey XML)</h2>
+      <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
+      <ul id="privKeyList"></ul>
+    </div>
+  </section>
+
+  <!-- 鍵管理セクション -->
+  <section id="keyManagement">
+    <div class="key-section">
+      <h2>鍵管理</h2>
+      <div>
+        <label for="keyNameInput">鍵名 (英数字、_, -, @, . のみ): </label>
+        <input type="text" id="keyNameInput" placeholder="例: MyKey01">
+        <select id="keyAlgorithmSelect">
+          <option value="EC">楕円曲線 (ECDH)[推奨]</option>
+          <option value="RSA">RSA (RSA-OAEP)</option>
+        </select>
+        <button id="generateKeyButton">鍵生成</button>
+      </div>
+      <div>
+        <h3>鍵一覧</h3>
+        <table id="keyTable">
+          <thead>
+            <tr>
+              <th>鍵名</th>
+              <th>種別</th>
+              <th>鍵情報</th>
+              <th>状態</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="exportArea"></div>
+    </div>
+  </section>
+
+  <!-- 取り扱い注意！セクション：IndexedDB初期化 -->
+  <section id="resetSection" class="warning-section">
+    <h2>取り扱い注意！</h2>
+    <p>
+      以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
+      この操作は元に戻せませんので、十分に注意してください。
+    </p>
+    <button id="resetDBBtn" style="background-color: red; color: white;">鍵一覧初期化</button>
+  </section>
 
   <script>
     // ── 定数定義 ──
@@ -73,45 +146,19 @@
     const AES_ALGORITHM = "AES-GCM";
     const AES_KEY_LENGTH = 256;
     const AES_IV_LENGTH = 12;
+    // 固定salt（必要に応じて変更）
     const FIXED_SALT = new TextEncoder().encode("PubliCryptSalt");
 
     // ── グローバル変数 ──
     let db;
+    // 今後は、credential.idと固定saltを使って導出したハッシュをAES鍵として利用する
     let webauthnKey = null;
-    let webauthnUser = null;
-    let webauthnUserHandle = null;
-    const keyStore = {};
-    const importedPrivateKeys = [];
-    const encryptionPublicKeys = [];
-    const filesToProcess = [];
-
-    // ── 公開鍵、秘密鍵をXML形式に変換するヘルパー関数 ──
-    function convertPublicJwkToXml(jwk) {
-      if (jwk.kty === "RSA") {
-        const modulus = base64UrlToBase64(jwk.n);
-        const exponent = base64UrlToBase64(jwk.e);
-        return `<RSAKeyValue><Modulus>${modulus}</Modulus><Exponent>${exponent}</Exponent></RSAKeyValue>`;
-      } else if (jwk.kty === "EC") {
-        return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y></ECKeyValue>`;
-      }
-    }
-    function convertPrivateJwkToXml(jwk) {
-      if (jwk.kty === "RSA") {
-        const modulus = base64UrlToBase64(jwk.n);
-        const exponent = base64UrlToBase64(jwk.e);
-        const d = base64UrlToBase64(jwk.d);
-        const p = base64UrlToBase64(jwk.p);
-        const q = base64UrlToBase64(jwk.q);
-        const dp = base64UrlToBase64(jwk.dp);
-        const dq = base64UrlToBase64(jwk.dq);
-        const inverseQ = base64UrlToBase64(jwk.qi);
-        return `<RSAKeyValue><Modulus>${modulus}</Modulus><Exponent>${exponent}</Exponent>` +
-               `<P>${p}</P><Q>${q}</Q><DP>${dp}</DP><DQ>${dq}</DQ><InverseQ>${inverseQ}</InverseQ>` +
-               `<D>${d}</D></RSAKeyValue>`;
-      } else if (jwk.kty === "EC") {
-        return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y><D>${jwk.d}</D></ECKeyValue>`;
-      }
-    }
+    let webauthnUser = null;      // 表示用ユーザー名
+    let webauthnUserHandle = null; // credential.idから算出（base64）
+    const keyStore = {};          // 鍵情報を保持（公開鍵オブジェクト等）
+    const importedPrivateKeys = []; // 復号用の秘密鍵オブジェクト
+    const encryptionPublicKeys = []; // 暗号化用の公開鍵リスト
+    const filesToProcess = [];       // ドラッグ＆ドロップ等のファイル
 
     // ── IndexedDB 初期化 ──
     function initDB() {
@@ -131,6 +178,7 @@
 
     // ── storeKeyRecord, getKeyRecord ──
     function storeKeyRecord(record) {
+      // 作成者は、ログイン中ならその識別子、なければ"不明"
       record.loginName = webauthnUserHandle ? webauthnUserHandle : "不明";
       return new Promise((resolve, reject) => {
         const transaction = db.transaction("keys", "readwrite");
@@ -188,7 +236,7 @@
       statusElem.textContent = (webauthnKey && webauthnUser) ? "ログイン中: " + webauthnUser : "未ログイン";
     }
 
-    // ── ユーティリティ関数（base64変換等） ──
+    // ── ユーティリティ関数 ──
     function concatUint8Arrays(arrays) {
       let total = arrays.reduce((sum, arr) => sum + arr.length, 0);
       let result = new Uint8Array(total);
@@ -226,7 +274,10 @@
     }
 
     // ── WebAuthn 鍵ペアラッピング用関数 ──
-    async function encryptKeyPairJWK(publicJwk, privateJwk) { return; }
+    async function encryptKeyPairJWK(publicJwk, privateJwk) {
+      // 本実装ではstoreKeyPair内で秘密鍵のみを暗号化しているので未使用
+      return;
+    }
     async function decryptPrivateKeyJWK(ivBase64, ciphertextBase64) {
       const iv = base64ToUint8Array(ivBase64);
       const ciphertext = base64ToUint8Array(ciphertextBase64);
@@ -333,6 +384,7 @@
               keyStore[record.name] = { encrypted: true, type: record.type, loginName: record.loginName };
             }
           } else {
+            // 非暗号化レコード
             if (record.publicKeyJwk) {
               if (record.type === "RSA") {
                 const pubKey = await crypto.subtle.importKey(
@@ -389,7 +441,7 @@
       }
     }
 
-    // ── refreshKeyList（公開鍵情報表示の改善、操作ボタン制御） ──
+    // ── refreshKeyList の修正（公開鍵情報表示の改善） ──
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
@@ -428,6 +480,7 @@
         }
         tr.appendChild(tdStatus);
         const tdOps = document.createElement("td");
+        // エクスポートボタン（暗号化鍵の場合、ログイン中かつ作成者が一致している場合のみ表示）
         const exportPubBtn = document.createElement("button");
         exportPubBtn.textContent = "公開鍵エクスポート";
         exportPubBtn.onclick = () => exportKey(name, "public");
@@ -501,6 +554,7 @@
     async function exportKey(name, type) {
       const keyPair = keyStore[name];
       let key;
+      // 暗号化されていない場合のみ、オブジェクトの存在チェック
       if (!keyPair.encrypted) {
         if (type === "public") {
           if (!keyPair.publicKey) { alert("公開鍵が存在しません"); return; }
@@ -557,6 +611,7 @@
       refreshKeyList();
     }
     
+    // deleteKeyRecord() の仮実装（IndexedDB上の削除処理）
     async function deleteKeyRecord(name) {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction("keys", "readwrite");
@@ -987,6 +1042,7 @@
         const rawId = new TextEncoder().encode(credential.id);
         webauthnUserHandle = arrayBufferToBase64(rawId);
         await storeUserMapping(webauthnUserHandle, userName);
+        // credential.idと固定saltを結合してハッシュを導出
         const combined = new Uint8Array(rawId.length + FIXED_SALT.length);
         combined.set(rawId);
         combined.set(FIXED_SALT, rawId.length);
