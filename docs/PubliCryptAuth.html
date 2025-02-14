@@ -152,9 +152,9 @@
 
     // ── グローバル変数 ──
     let db;
-    let webauthnKey = null;       // WebAuthn により得られるAES鍵（ログイン済みの場合のみ）
-    let webauthnUser = null;      // 登録／ログインしたユーザー名
-    // keyStore: 各鍵は { publicKey, privateKey, type, bitLength（RSAの場合）/curve（ECの場合）、encrypted: true/false }
+    let webauthnKey = null;       // WebAuthn により得られる AES鍵（ログイン済みの場合のみ）
+    let webauthnUser = null;      // WebAuthn登録／ログイン時に得られるユーザー名
+    // keyStore: 各鍵は { publicKey, privateKey, type, bitLength（RSAの場合）/curve（ECの場合）、encrypted: true/false, loginName (暗号化時のユーザー名) }
     const keyStore = {};
     // importedPrivateKeys は復号用に登録
     const importedPrivateKeys = [];
@@ -279,12 +279,13 @@
       return JSON.parse(text);
     }
 
-    // ── 鍵ペア保存：WebAuthn鍵があれば暗号化して保存、なければ従来通り ──
+    // ── 鍵ペア保存 ──
+    // WebAuthn鍵があればJWKを暗号化して保存し、loginNameとしてwebAuthnUserを記録する
     async function storeKeyPair(name, type, publicJwk, privateJwk) {
       let record;
       if (webauthnKey) {
         const encrypted = await encryptKeyPairJWK(publicJwk, privateJwk);
-        record = { name, type, encrypted: true, iv: encrypted.iv, encryptedKeyPair: encrypted.ciphertext };
+        record = { name, type, encrypted: true, iv: encrypted.iv, encryptedKeyPair: encrypted.ciphertext, loginName: webauthnUser };
       } else {
         record = { name, type, publicKeyJwk: publicJwk, privateKeyJwk: privateJwk, encrypted: false };
       }
@@ -300,52 +301,56 @@
         const records = req.result;
         for (const record of records) {
           if (record.encrypted) {
-            if (!webauthnKey) {
-              alert("鍵 " + record.name + " は暗号化されています。WebAuthnログインしてください。");
-              continue;
-            }
-            try {
-              const decrypted = await decryptKeyPairJWK(record.iv, record.encryptedKeyPair);
-              if (record.type === "RSA") {
-                const pubKey = await crypto.subtle.importKey(
-                  "jwk", decrypted.publicJwk,
-                  { name: RSA_ALGORITHM, hash: RSA_HASH },
-                  true, ["encrypt"]
-                );
-                if (!keyStore[record.name]) { keyStore[record.name] = {}; }
-                keyStore[record.name].publicKey = pubKey;
-                keyStore[record.name].type = "RSA";
-                keyStore[record.name].bitLength = getRsaBitLengthFromXmlModulus(base64UrlToBase64(decrypted.publicJwk.n));
-                const privKey = await crypto.subtle.importKey(
-                  "jwk", decrypted.privateJwk,
-                  { name: RSA_ALGORITHM, hash: RSA_HASH },
-                  true, ["decrypt"]
-                );
-                importedPrivateKeys.push({ name: record.name, identifier: base64UrlToBase64(decrypted.publicJwk.n), cryptoKey: privKey, type: "RSA" });
-                keyStore[record.name].privateKey = privKey;
-              } else if (record.type === "EC") {
-                const pubKey = await crypto.subtle.importKey(
-                  "jwk", decrypted.publicJwk,
-                  { name: EC_ALGORITHM, namedCurve: decrypted.publicJwk.crv },
-                  true, []
-                );
-                if (!keyStore[record.name]) { keyStore[record.name] = {}; }
-                keyStore[record.name].publicKey = pubKey;
-                keyStore[record.name].type = "EC";
-                keyStore[record.name].curve = decrypted.publicJwk.crv;
-                const privKey = await crypto.subtle.importKey(
-                  "jwk", decrypted.privateJwk,
-                  { name: EC_ALGORITHM, namedCurve: decrypted.publicJwk.crv },
-                  true, ["deriveKey"]
-                );
-                const raw = await crypto.subtle.exportKey("raw", pubKey);
-                const identifier = arrayBufferToBase64(raw);
-                importedPrivateKeys.push({ name: record.name, identifier, cryptoKey: privKey, type: "EC" });
-                keyStore[record.name].privateKey = privKey;
+            // ※暗号化された鍵は、WebAuthnでログイン済みの場合は復号し、未ログインの場合も状態表示のために登録する
+            if (webauthnKey) {
+              try {
+                const decrypted = await decryptKeyPairJWK(record.iv, record.encryptedKeyPair);
+                if (record.type === "RSA") {
+                  const pubKey = await crypto.subtle.importKey(
+                    "jwk", decrypted.publicJwk,
+                    { name: RSA_ALGORITHM, hash: RSA_HASH },
+                    true, ["encrypt"]
+                  );
+                  if (!keyStore[record.name]) { keyStore[record.name] = {}; }
+                  keyStore[record.name].publicKey = pubKey;
+                  keyStore[record.name].type = "RSA";
+                  keyStore[record.name].bitLength = getRsaBitLengthFromXmlModulus(base64UrlToBase64(decrypted.publicJwk.n));
+                  const privKey = await crypto.subtle.importKey(
+                    "jwk", decrypted.privateJwk,
+                    { name: RSA_ALGORITHM, hash: RSA_HASH },
+                    true, ["decrypt"]
+                  );
+                  importedPrivateKeys.push({ name: record.name, identifier: base64UrlToBase64(decrypted.publicJwk.n), cryptoKey: privKey, type: "RSA" });
+                  keyStore[record.name].privateKey = privKey;
+                } else if (record.type === "EC") {
+                  const pubKey = await crypto.subtle.importKey(
+                    "jwk", decrypted.publicJwk,
+                    { name: EC_ALGORITHM, namedCurve: decrypted.publicJwk.crv },
+                    true, []
+                  );
+                  if (!keyStore[record.name]) { keyStore[record.name] = {}; }
+                  keyStore[record.name].publicKey = pubKey;
+                  keyStore[record.name].type = "EC";
+                  keyStore[record.name].curve = decrypted.publicJwk.crv;
+                  const privKey = await crypto.subtle.importKey(
+                    "jwk", decrypted.privateJwk,
+                    { name: EC_ALGORITHM, namedCurve: decrypted.publicJwk.crv },
+                    true, ["deriveKey"]
+                  );
+                  const raw = await crypto.subtle.exportKey("raw", pubKey);
+                  const identifier = arrayBufferToBase64(raw);
+                  importedPrivateKeys.push({ name: record.name, identifier, cryptoKey: privKey, type: "EC" });
+                  keyStore[record.name].privateKey = privKey;
+                }
+                keyStore[record.name].encrypted = true;
+                keyStore[record.name].loginName = record.loginName;
+              } catch (e) {
+                // 失敗しても状態としては登録（復号は後でログイン後に可能）
+                keyStore[record.name] = { encrypted: true, type: record.type, loginName: record.loginName };
               }
-              keyStore[record.name].encrypted = true;
-            } catch (e) {
-              alert("鍵 " + record.name + " の復号に失敗しました: " + e.message);
+            } else {
+              // 未ログイン時も、状態表示のために最低限情報を登録
+              keyStore[record.name] = { encrypted: true, type: record.type, loginName: record.loginName };
             }
           } else {
             if (record.publicKeyJwk) {
@@ -472,7 +477,8 @@
         type: record.type,
         encrypted: true,
         iv: encrypted.iv,
-        encryptedKeyPair: encrypted.ciphertext
+        encryptedKeyPair: encrypted.ciphertext,
+        loginName: webauthnUser
       };
       await storeKeyRecord(newRecord);
       alert("鍵ペアの暗号化が完了しました。再読み込みしてください。");
@@ -966,10 +972,10 @@
           tdKeyInfo.textContent = keyStore[name].curve ? keyStore[name].curve : "N/A";
         } else { tdKeyInfo.textContent = "N/A"; }
         tr.appendChild(tdKeyInfo);
-        // 状態列：暗号化済みの場合はログイン名を表示
+        // 状態列
         const tdStatus = document.createElement("td");
         if (keyStore[name].encrypted) {
-          tdStatus.textContent = "暗号化済み (ログイン: " + (webauthnUser || "不明") + ")";
+          tdStatus.textContent = "暗号化済み (ログイン: " + (keyStore[name].loginName || "不明") + ")";
         } else {
           tdStatus.textContent = "未暗号化";
         }
@@ -1049,21 +1055,20 @@
       }
       try {
         let jwk;
-        if (keyPair.encrypted && webauthnKey) {
+        if (keyPair.encrypted) {
+          if (!webauthnKey) { alert("暗号化された鍵を復号するにはWebAuthnでログインしてください。"); return; }
           const record = await getKeyRecord(name);
           const decrypted = await decryptKeyPairJWK(record.iv, record.encryptedKeyPair);
           jwk = type === "public" ? decrypted.publicJwk : decrypted.privateJwk;
         } else {
           jwk = await crypto.subtle.exportKey("jwk", key);
         }
-        let xml;
-        if (type === "public") { xml = convertPublicJwkToXml(jwk); }
-        else { xml = convertPrivateJwkToXml(jwk); }
+        let xml = (type === "public") ? convertPublicJwkToXml(jwk) : convertPrivateJwkToXml(jwk);
         const exportArea = document.getElementById("exportArea");
-        if (type === "private") {
-          exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
-                                  <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
-        } else { exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果</h3>`; }
+        exportArea.innerHTML = (type === "private")
+          ? `<h3>${name} の 秘密鍵 エクスポート結果</h3>
+             <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`
+          : `<h3>${name} の 公開鍵 エクスポート結果</h3>`;
         const textarea = document.createElement("textarea");
         textarea.rows = 10;
         textarea.value = xml;
