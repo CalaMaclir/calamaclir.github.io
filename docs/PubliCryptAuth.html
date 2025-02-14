@@ -27,7 +27,7 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
     textarea { width: 100%; }
     section { margin-bottom: 30px; }
-    /* スピナーのスタイル */
+    /* スピナー */
     #spinner {
       display: none;
       position: fixed;
@@ -149,13 +149,13 @@
 
     // ── グローバル変数 ──
     let db;
-    let webauthnKey = null;       // WebAuthn により得られる AES鍵（ログイン済みの場合のみ）
-    let webauthnUser = null;      // WebAuthn 登録／ログイン時に得られるユーザー名
-    // keyStore: 各鍵は { publicKey, privateKey, type, bitLength（RSAの場合）/curve（ECの場合）、encrypted: true/false, loginName }
-    const keyStore = {};
-    const importedPrivateKeys = [];
-    const encryptionPublicKeys = [];
-    const filesToProcess = [];
+    let webauthnKey = null;       // WebAuthn により得られる AES鍵
+    let webauthnUser = null;      // ユーザー名（表示用）
+    let webauthnUserHandle = null; // WebAuthn 登録／ログイン時に取得した userHandle (base64文字列)
+    const keyStore = {};          // 各鍵情報を保持
+    const importedPrivateKeys = []; // 復号用
+    const encryptionPublicKeys = []; // 公開鍵インポート時に登録
+    const filesToProcess = [];       // ドラッグ＆ドロップ等のファイル
 
     // ── IndexedDB 初期化（"keys" と "users" ストアを作成） ──
     function initDB() {
@@ -173,16 +173,7 @@
       request.onerror = function(e) { console.error("IndexedDB error", e); };
     }
 
-    // ── storeKeyRecord の定義 ──
-	function getKeyRecord(name) {
-	  return new Promise((resolve, reject) => {
-	    const transaction = db.transaction("keys", "readonly");
-	    const store = transaction.objectStore("keys");
-	    const request = store.get(name);
-	    request.onsuccess = () => resolve(request.result);
-	    request.onerror = () => reject(request.error);
-	  });
-	}
+    // ── storeKeyRecord, getKeyRecord の定義 ──
     function storeKeyRecord(record) {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction("keys", "readwrite");
@@ -190,6 +181,15 @@
         const req = store.put(record);
         req.onsuccess = () => resolve();
         req.onerror = (e) => reject(e);
+      });
+    }
+    function getKeyRecord(name) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction("keys", "readonly");
+        const store = transaction.objectStore("keys");
+        const req = store.get(name);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
       });
     }
 
@@ -292,7 +292,8 @@
       let record;
       if (webauthnKey) {
         const encrypted = await encryptKeyPairJWK(publicJwk, privateJwk);
-        record = { name, type, encrypted: true, iv: encrypted.iv, encryptedKeyPair: encrypted.ciphertext, loginName: webauthnUser };
+        // loginName として WebAuthn 登録時の userHandle を記録
+        record = { name, type, encrypted: true, iv: encrypted.iv, encryptedKeyPair: encrypted.ciphertext, loginName: webauthnUserHandle };
       } else {
         record = { name, type, publicKeyJwk: publicJwk, privateKeyJwk: privateJwk, encrypted: false };
       }
@@ -411,10 +412,9 @@
       }
     }
 
-    // ── ここで、ファイルドラッグ＆ドロップ／選択用の変数を1度だけ宣言 ──
+    // ── ファイルドラッグ＆ドロップ／選択処理（重複宣言はしない） ──
     const fileDropArea = document.getElementById('fileDropArea');
     const fileListElem = document.getElementById('fileList');
-
     fileDropArea.addEventListener('dragover', (e) => { e.preventDefault(); fileDropArea.style.borderColor = "#000"; });
     fileDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); fileDropArea.style.borderColor = "#888"; });
     fileDropArea.addEventListener('drop', (e) => {
@@ -826,7 +826,26 @@
         if (!keyStore[name].encrypted && webauthnKey) {
           const migrateBtn = document.createElement("button");
           migrateBtn.textContent = "鍵ペア暗号化";
-          migrateBtn.onclick = () => migrateKeyPairEncryption(name);
+          migrateBtn.onclick = async () => {
+            const record = await getKeyRecord(name);
+            // 現在のログイン中の userHandle と、鍵に保存されている loginName (userHandle) を比較
+            if(record.loginName && record.loginName !== webauthnUserHandle) {
+              alert("暗号時の認証が異なります");
+              return;
+            }
+            const encrypted = await encryptKeyPairJWK(record.publicKeyJwk, record.privateKeyJwk);
+            const newRecord = {
+              name: record.name,
+              type: record.type,
+              encrypted: true,
+              iv: encrypted.iv,
+              encryptedKeyPair: encrypted.ciphertext,
+              loginName: webauthnUserHandle
+            };
+            await storeKeyRecord(newRecord);
+            alert("鍵ペアの暗号化が完了しました。");
+            refreshKeyList();
+          };
           tdOps.appendChild(document.createTextNode("　"));
           tdOps.appendChild(migrateBtn);
         }
@@ -933,7 +952,6 @@
       req.onerror = function(e) { alert("鍵一覧の初期化中にエラーが発生しました。"); };
       req.onblocked = function(e) { alert("他のタブで開いている可能性があります。"); };
     });
-
     window.addEventListener("load", () => { initDB(); });
 
     // ── WebAuthn 登録／ログイン処理 ──
@@ -956,13 +974,13 @@
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
         let rawHandle;
-        if (credential.response.userHandle) {
+        if (credential.response.userHandle && credential.response.userHandle.byteLength > 0) {
           rawHandle = new Uint8Array(credential.response.userHandle);
         } else {
           rawHandle = new TextEncoder().encode(credential.id);
         }
-        const handleBase64 = arrayBufferToBase64(rawHandle);
-        await storeUserMapping(handleBase64, userName);
+        webauthnUserHandle = arrayBufferToBase64(rawHandle);
+        await storeUserMapping(webauthnUserHandle, userName);
         const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
         webauthnUser = userName;
@@ -985,15 +1003,15 @@
         const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
         let rawHandle;
-        if (assertion.response.userHandle) {
+        if (assertion.response.userHandle && assertion.response.userHandle.byteLength > 0) {
           rawHandle = new Uint8Array(assertion.response.userHandle);
         } else {
           rawHandle = new TextEncoder().encode(assertion.id);
         }
-        const handleBase64 = arrayBufferToBase64(rawHandle);
+        webauthnUserHandle = arrayBufferToBase64(rawHandle);
         let mapping;
         try {
-          mapping = await getUserMapping(handleBase64);
+          mapping = await getUserMapping(webauthnUserHandle);
         } catch (e) {
           mapping = null;
         }
@@ -1019,6 +1037,11 @@
         alert("既に暗号化済みです。");
         return;
       }
+      // 現在のログイン中の userHandle と、暗号化時に記録された loginName (userHandle) が一致するか確認
+      if (record.loginName && record.loginName !== webauthnUserHandle) {
+        alert("暗号時の認証が異なります");
+        return;
+      }
       const encrypted = await encryptKeyPairJWK(record.publicKeyJwk, record.privateKeyJwk);
       const newRecord = {
         name: record.name,
@@ -1026,11 +1049,11 @@
         encrypted: true,
         iv: encrypted.iv,
         encryptedKeyPair: encrypted.ciphertext,
-        loginName: webauthnUser
+        loginName: webauthnUserHandle
       };
       await storeKeyRecord(newRecord);
-      alert("鍵ペアの暗号化が完了しました。再読み込みしてください。");
-      window.location.reload();
+      alert("鍵ペアの暗号化が完了しました。");
+      refreshKeyList();
     }
 
     // ── XML形式の鍵インポート（統合版） ──
