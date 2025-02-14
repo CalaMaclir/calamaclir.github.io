@@ -51,8 +51,10 @@
   <h1>PubliCrypt</h1>
   <!-- WebAuthn 登録／ログインエリア -->
   <div id="webauthnControls">
-    <input type="text" id="webauthnUserName" placeholder="WebAuthnユーザー名">
+    <!-- 登録時のみユーザー名入力欄を利用 -->
+    <input type="text" id="webauthnUserName" placeholder="WebAuthnユーザー名 (登録時のみ)">
     <button id="webauthnRegisterButton">WebAuthn登録</button>
+    <!-- ログイン時はユーザー名入力は不要 -->
     <button id="webauthnLoginButton">WebAuthnログイン</button>
     <span id="loginStatus">未ログイン</span>
   </div>
@@ -301,7 +303,7 @@
         const records = req.result;
         for (const record of records) {
           if (record.encrypted) {
-            // ※暗号化された鍵は、WebAuthnでログイン済みの場合は復号し、未ログインの場合も状態表示のために登録する
+            // 暗号化された鍵は、WebAuthn鍵があれば復号、なければ最低限状態を登録
             if (webauthnKey) {
               try {
                 const decrypted = await decryptKeyPairJWK(record.iv, record.encryptedKeyPair);
@@ -345,11 +347,9 @@
                 keyStore[record.name].encrypted = true;
                 keyStore[record.name].loginName = record.loginName;
               } catch (e) {
-                // 失敗しても状態としては登録（復号は後でログイン後に可能）
                 keyStore[record.name] = { encrypted: true, type: record.type, loginName: record.loginName };
               }
             } else {
-              // 未ログイン時も、状態表示のために最低限情報を登録
               keyStore[record.name] = { encrypted: true, type: record.type, loginName: record.loginName };
             }
           } else {
@@ -426,7 +426,7 @@
       };
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
-        // サンプルとして、clientDataJSON のハッシュから AES鍵を生成
+        // 登録時は、clientDataJSON のハッシュから AES鍵を生成
         const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
         webauthnUser = userName;
@@ -437,8 +437,6 @@
       }
     }
     async function webAuthnLogin() {
-      const userName = document.getElementById("webauthnUserName").value.trim();
-      if (!userName) { alert("ユーザー名を入力してください。"); return; }
       const challenge = new Uint8Array(32);
       window.crypto.getRandomValues(challenge);
       const publicKeyOptions = {
@@ -450,7 +448,12 @@
         const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
         const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-        webauthnUser = userName;
+        // ここで、userHandle（が提供されていれば）からログイン名を取得する
+        if (assertion.response.userHandle) {
+          webauthnUser = new TextDecoder().decode(assertion.response.userHandle);
+        } else {
+          webauthnUser = "不明";
+        }
         updateLoginStatus();
         alert("WebAuthnログイン成功: " + webauthnUser);
       } catch (err) {
@@ -957,7 +960,7 @@
       for (const name in keyStore) {
         const tr = document.createElement("tr");
         // 鍵名
-        const tdName = document.createElement("td");
+       	const tdName = document.createElement("td");
         tdName.textContent = name;
         tr.appendChild(tdName);
         // 種別
