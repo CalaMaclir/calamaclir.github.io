@@ -848,42 +848,57 @@
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name);
-        tdOps.appendChild(exportPubBtn);
-        tdOps.appendChild(document.createTextNode("　"));
-        tdOps.appendChild(exportPrivBtn);
-        tdOps.appendChild(document.createTextNode("　"));
-        tdOps.appendChild(deleteBtn);
-        if (!keyStore[name].encrypted && webauthnKey) {
-          const migrateBtn = document.createElement("button");
-          migrateBtn.textContent = "鍵ペア暗号化";
-          migrateBtn.onclick = async () => {
-            const record = await getKeyRecord(name);
-            if(record.loginName && record.loginName !== webauthnUserHandle) {
-              alert("暗号時の認証が異なります");
-              return;
+
+        // エクスポートボタンの表示条件を制御
+        if(keyStore[name].encrypted){
+            // 暗号化された鍵の場合
+            if(webauthnKey && keyStore[name].loginName === webauthnUserHandle){
+                tdOps.appendChild(exportPubBtn);
+                tdOps.appendChild(document.createTextNode("　"));
+                tdOps.appendChild(exportPrivBtn);
+                tdOps.appendChild(document.createTextNode("　"));
             }
-            const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
-            const encBuffer = await crypto.subtle.encrypt(
-              { name: AES_ALGORITHM, iv },
-              webauthnKey,
-              new TextEncoder().encode(JSON.stringify({ privateJwk: record.privateKeyJwk }))
-            );
-            const encrypted = { iv: arrayBufferToBase64(iv), ciphertext: arrayBufferToBase64(encBuffer) };
-            const newRecord = {
-              name: record.name,
-              type: record.type,
-              encrypted: true,
-              iv: encrypted.iv,
-              encryptedKeyPair: encrypted.ciphertext,
-              loginName: webauthnUserHandle,
-              publicKeyJwk: record.publicKeyJwk
-            };
-            await storeKeyRecord(newRecord);
-            alert("鍵ペアの暗号化が完了しました。");
-            refreshKeyList();
-          };
-          tdOps.appendChild(document.createTextNode("　"));
-          tdOps.appendChild(migrateBtn);
+            tdOps.appendChild(deleteBtn);
+        } else {
+            // 未暗号化の場合は常に表示
+            tdOps.appendChild(exportPubBtn);
+            tdOps.appendChild(document.createTextNode("　"));
+            tdOps.appendChild(exportPrivBtn);
+            tdOps.appendChild(document.createTextNode("　"));
+            tdOps.appendChild(deleteBtn);
+            if(webauthnKey){
+                const migrateBtn = document.createElement("button");
+                migrateBtn.textContent = "鍵ペア暗号化";
+                migrateBtn.onclick = async () => {
+                    const record = await getKeyRecord(name);
+                    if(record.loginName && record.loginName !== webauthnUserHandle) {
+                      alert("暗号時の認証が異なります");
+                      return;
+                    }
+                    const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
+                    const encBuffer = await crypto.subtle.encrypt(
+                      { name: AES_ALGORITHM, iv },
+                      webauthnKey,
+                      new TextEncoder().encode(JSON.stringify({ privateJwk: record.privateKeyJwk }))
+                    );
+                    const encrypted = { iv: arrayBufferToBase64(iv), ciphertext: arrayBufferToBase64(encBuffer) };
+                    const newRecord = {
+                      name: record.name,
+                      type: record.type,
+                      encrypted: true,
+                      iv: encrypted.iv,
+                      encryptedKeyPair: encrypted.ciphertext,
+                      loginName: webauthnUserHandle,
+                      publicKeyJwk: record.publicKeyJwk
+                    };
+                    await storeKeyRecord(newRecord);
+                    alert("鍵ペアの暗号化が完了しました。");
+                    // IndexedDB を再読み込みして最新の鍵一覧を反映
+                    await loadKeysFromDB();
+                };
+                tdOps.appendChild(document.createTextNode("　"));
+                tdOps.appendChild(migrateBtn);
+            }
         }
         tr.appendChild(tdOps);
         tbody.appendChild(tr);
