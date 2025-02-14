@@ -200,7 +200,8 @@
     // ArrayBuffer ⇔ Base64（EC用識別子生成）
     function arrayBufferToBase64(buffer) {
       let binary = '';
-      const bytes = new Uint8Array(buffer);
+      // 入力がUint8Arrayならそのまま利用、それ以外はnew Uint8Arrayで変換
+      let bytes = (buffer instanceof Uint8Array) ? buffer : new Uint8Array(buffer);
       for (let b of bytes) { binary += String.fromCharCode(b); }
       return btoa(binary);
     }
@@ -213,7 +214,6 @@
 
     // ── RSAビット長推定関数 ──
     function getRsaBitLengthFromXmlModulus(modulusBase64) {
-      // modulusBase64 は標準の base64 文字列
       const binaryString = atob(modulusBase64);
       return binaryString.length * 8;
     }
@@ -310,12 +310,8 @@
                 { name: RSA_ALGORITHM, hash: RSA_HASH },
                 true, ["decrypt"]
               );
-              importedPrivateKeys.push({ 
-                name: record.name, 
-                identifier: record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "", 
-                cryptoKey: privKey, 
-                type: "RSA" 
-              });
+              const identifier = record.publicKeyJwk ? base64UrlToBase64(record.publicKeyJwk.n) : "";
+              importedPrivateKeys.push({ name: record.name, identifier: identifier, cryptoKey: privKey, type: "RSA" });
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].privateKey = privKey;
             } else if (record.type === "EC") {
@@ -326,12 +322,7 @@
               );
               const raw = await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey);
               const identifier = arrayBufferToBase64(raw);
-              importedPrivateKeys.push({ 
-                name: record.name, 
-                identifier: identifier, 
-                cryptoKey: privKey, 
-                type: "EC" 
-              });
+              importedPrivateKeys.push({ name: record.name, identifier: identifier, cryptoKey: privKey, type: "EC" });
               if (!keyStore[record.name]) { keyStore[record.name] = {}; }
               keyStore[record.name].privateKey = privKey;
             }
@@ -770,10 +761,10 @@
               }
             }
           } else if (entry.type === 1) {
-            const entryIdBase64 = btoa(String.fromCharCode(...entry.recipientId));
+            // ここで従来の btoa(String.fromCharCode(...)) の代わりに arrayBufferToBase64 を使用
+            const entryIdBase64 = arrayBufferToBase64(entry.recipientId);
             for (let priv of importedPrivateKeys.filter(k => k.type === "EC")) {
               if (priv.identifier === entryIdBase64) {
-                // 対応する秘密鍵の curve を keyStore から取得して使用
                 const ephemeralPubKey = await crypto.subtle.importKey(
                   "raw", entry.ephemeralPub,
                   { name: EC_ALGORITHM, namedCurve: keyStore[priv.name].curve },
@@ -886,7 +877,6 @@
         }
       } else if (algType === "EC") {
         try {
-          // 楕円曲線鍵生成時は、定数 DEFAULT_EC_CURVE を使用
           const keyPair = await crypto.subtle.generateKey(
             { name: EC_ALGORITHM, namedCurve: DEFAULT_EC_CURVE },
             true, ["deriveKey", "deriveBits"]
