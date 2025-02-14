@@ -761,7 +761,6 @@
               }
             }
           } else if (entry.type === 1) {
-            // ここで従来の btoa(String.fromCharCode(...)) の代わりに arrayBufferToBase64 を使用
             const entryIdBase64 = arrayBufferToBase64(entry.recipientId);
             for (let priv of importedPrivateKeys.filter(k => k.type === "EC")) {
               if (priv.identifier === entryIdBase64) {
@@ -825,30 +824,6 @@
       }
     }
 
-    // ── ボタン押下処理 ──
-    document.getElementById('encryptBtn').addEventListener('click', async () => {
-      if (filesToProcess.length === 0) {
-        alert("暗号化するファイルがありません。");
-        return;
-      }
-      showSpinner();
-      for (let file of filesToProcess) {
-        await encryptFile(file);
-      }
-      resetUI();
-    });
-    document.getElementById('decryptBtn').addEventListener('click', async () => {
-      if (filesToProcess.length === 0) {
-        alert("復号するファイルがありません。");
-        return;
-      }
-      showSpinner();
-      for (let file of filesToProcess) {
-        await decryptFile(file);
-      }
-      resetUI();
-    });
-
     // ── 鍵生成（統合版）：選択されたアルゴリズムに応じて鍵ペア生成 ──
     async function generateKeyPair(name, algType) {
       if (algType === "RSA") {
@@ -869,6 +844,9 @@
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(name, "RSA", publicJwk, privateJwk);
+          // 追加: 秘密鍵を importedPrivateKeys に登録
+          const identifier = base64UrlToBase64(publicJwk.n);
+          importedPrivateKeys.push({ name: name, identifier: identifier, cryptoKey: keyPair.privateKey, type: "RSA" });
           alert("RSA鍵ペア生成完了: " + name);
           refreshKeyList();
         } catch (e) {
@@ -890,6 +868,10 @@
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
           await storeKeyPair(name, "EC", publicJwk, privateJwk);
+          // 追加: 秘密鍵を importedPrivateKeys に登録
+          const raw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
+          const identifier = arrayBufferToBase64(raw);
+          importedPrivateKeys.push({ name: name, identifier: identifier, cryptoKey: keyPair.privateKey, type: "EC" });
           alert("楕円曲線鍵ペア生成完了: " + name);
           refreshKeyList();
         } catch (e) {
