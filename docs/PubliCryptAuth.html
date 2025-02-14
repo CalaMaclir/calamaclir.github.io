@@ -282,7 +282,7 @@
     }
 
     // ── 鍵ペア保存 ──
-    // WebAuthn鍵があればJWKを暗号化して保存し、loginNameとしてwebAuthnUserを記録する
+    // WebAuthn鍵があればJWKを暗号化して保存し、loginNameとして webauthnUser を記録する
     async function storeKeyPair(name, type, publicJwk, privateJwk) {
       let record;
       if (webauthnKey) {
@@ -448,14 +448,16 @@
         const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
         const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
         webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-        // ここで、userHandle（が提供されていれば）からログイン名を取得する
+        // userHandle を Uint8Array 経由で UTF-8 でデコードする
         if (assertion.response.userHandle) {
-          webauthnUser = new TextDecoder().decode(assertion.response.userHandle);
+          webauthnUser = new TextDecoder("utf-8").decode(new Uint8Array(assertion.response.userHandle));
         } else {
           webauthnUser = "不明";
         }
         updateLoginStatus();
         alert("WebAuthnログイン成功: " + webauthnUser);
+        // ログイン後、一覧を再描画して「鍵ペア暗号化」ボタンが表示されるようにする
+        refreshKeyList();
       } catch (err) {
         alert("WebAuthnログインエラー: " + err.message);
       }
@@ -960,7 +962,7 @@
       for (const name in keyStore) {
         const tr = document.createElement("tr");
         // 鍵名
-       	const tdName = document.createElement("td");
+        const tdName = document.createElement("td");
         tdName.textContent = name;
         tr.appendChild(tdName);
         // 種別
@@ -1006,7 +1008,7 @@
         tdOps.appendChild(exportPrivBtn);
         tdOps.appendChild(document.createTextNode("　"));
         tdOps.appendChild(deleteBtn);
-        // 未暗号化かつログイン済みの場合のみ「鍵ペア暗号化」ボタンを表示
+        // 未暗号化かつ WebAuthn鍵がある場合のみ「鍵ペア暗号化」ボタンを表示
         if (!keyStore[name].encrypted && webauthnKey) {
           const migrateBtn = document.createElement("button");
           migrateBtn.textContent = "鍵ペア暗号化";
