@@ -1006,74 +1006,66 @@
     window.addEventListener("load", () => { initDB(); });
 
     // ── WebAuthn 登録／ログイン処理 ──
-    async function webAuthnRegister() {
-      const userName = document.getElementById("webauthnUserName").value.trim();
-      if (!userName) { alert("ユーザー名を入力してください。"); return; }
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-      const userId = new Uint8Array(16);
-      window.crypto.getRandomValues(userId);
-      const publicKeyOptions = {
-        challenge,
-        rp: { name: "PubliCrypt", id: window.location.hostname },
-        user: { id: userId, name: userName, displayName: userName },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "preferred" },
-        timeout: 60000,
-        attestation: "none"
-      };
-      try {
-        const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
-        let rawHandle;
-        if (credential.response.userHandle && credential.response.userHandle.byteLength > 0) {
-          rawHandle = new Uint8Array(credential.response.userHandle);
-        } else {
-          rawHandle = new TextEncoder().encode(credential.id);
-        }
-        webauthnUserHandle = arrayBufferToBase64(rawHandle);
-        await storeUserMapping(webauthnUserHandle, userName);
-        const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
-        webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-        webauthnUser = userName;
-        updateLoginStatus();
-        alert("WebAuthn登録完了: " + webauthnUser);
-      } catch (err) {
-        alert("WebAuthn登録エラー: " + err.message);
-      }
+async function webAuthnRegister() {
+  const userName = document.getElementById("webauthnUserName").value.trim();
+  if (!userName) { alert("ユーザー名を入力してください。"); return; }
+  const challenge = new Uint8Array(32);
+  window.crypto.getRandomValues(challenge);
+  const userId = new Uint8Array(16);
+  window.crypto.getRandomValues(userId);
+  const publicKeyOptions = {
+    challenge,
+    rp: { name: "PubliCrypt", id: window.location.hostname },
+    user: { id: userId, name: userName, displayName: userName },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "preferred" },
+    timeout: 60000,
+    attestation: "none"
+  };
+  try {
+    const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
+    // 常に credential.id を使用する
+    const rawId = new TextEncoder().encode(credential.id);
+    webauthnUserHandle = arrayBufferToBase64(rawId);
+    await storeUserMapping(webauthnUserHandle, userName);
+    const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
+    webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
+    webauthnUser = userName;
+    updateLoginStatus();
+    alert("WebAuthn登録完了: " + webauthnUser);
+  } catch (err) {
+    alert("WebAuthn登録エラー: " + err.message);
+  }
+}
+async function webAuthnLogin() {
+  const challenge = new Uint8Array(32);
+  window.crypto.getRandomValues(challenge);
+  const publicKeyOptions = {
+    challenge,
+    timeout: 60000,
+    userVerification: "preferred"
+  };
+  try {
+    const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
+    const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
+    webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
+    // 常に assertion.id を使用する
+    const rawId = new TextEncoder().encode(assertion.id);
+    webauthnUserHandle = arrayBufferToBase64(rawId);
+    let mapping;
+    try {
+      mapping = await getUserMapping(webauthnUserHandle);
+    } catch (e) {
+      mapping = null;
     }
-    async function webAuthnLogin() {
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-      const publicKeyOptions = {
-        challenge,
-        timeout: 60000,
-        userVerification: "preferred"
-      };
-      try {
-        const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
-        const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
-        webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-        let rawHandle;
-        if (assertion.response.userHandle && assertion.response.userHandle.byteLength > 0) {
-          rawHandle = new Uint8Array(assertion.response.userHandle);
-        } else {
-          rawHandle = new TextEncoder().encode(assertion.id);
-        }
-        webauthnUserHandle = arrayBufferToBase64(rawHandle);
-        let mapping;
-        try {
-          mapping = await getUserMapping(webauthnUserHandle);
-        } catch (e) {
-          mapping = null;
-        }
-        webauthnUser = mapping ? mapping.userName : "(不明)";
-        updateLoginStatus();
-        alert("WebAuthnログイン成功: " + webauthnUser);
-        refreshKeyList();
-      } catch (err) {
-        alert("WebAuthnログインエラー: " + err.message);
-      }
-    }
+    webauthnUser = mapping ? mapping.userName : "(不明)";
+    updateLoginStatus();
+    alert("WebAuthnログイン成功: " + webauthnUser);
+    refreshKeyList();
+  } catch (err) {
+    alert("WebAuthnログインエラー: " + err.message);
+  }
+}
     document.getElementById("webauthnRegisterButton").addEventListener("click", webAuthnRegister);
     document.getElementById("webauthnLoginButton").addEventListener("click", webAuthnLogin);
 
