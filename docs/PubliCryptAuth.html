@@ -146,12 +146,15 @@
     const AES_ALGORITHM = "AES-GCM";
     const AES_KEY_LENGTH = 256;
     const AES_IV_LENGTH = 12;
+    // 固定のsalt値（必要に応じて適切なsaltに変更してください）
+    const FIXED_SALT = new TextEncoder().encode("PubliCryptSalt");
 
     // ── グローバル変数 ──
     let db;
-    let webauthnKey = null;       // WebAuthn により得られる AES鍵
+    // 今後はwebAuthnKeyはcredential.id＋saltから導出した暗号鍵として利用する
+    let webauthnKey = null;
     let webauthnUser = null;      // ユーザー名（表示用）
-    let webauthnUserHandle = null; // WebAuthn 登録／ログイン時に取得した userHandle (base64文字列)
+    let webauthnUserHandle = null; // credential.idから算出した識別子（base64文字列）
     const keyStore = {};          // 各鍵情報を保持
     const importedPrivateKeys = []; // 復号用
     const encryptionPublicKeys = []; // 公開鍵インポート時に登録
@@ -175,6 +178,8 @@
 
     // ── storeKeyRecord, getKeyRecord の定義 ──
     function storeKeyRecord(record) {
+      // 作成者は、ログインしている場合はその識別子、なければ"不明"とする
+      record.loginName = webauthnUserHandle ? webauthnUserHandle : "不明";
       return new Promise((resolve, reject) => {
         const transaction = db.transaction("keys", "readwrite");
         const store = transaction.objectStore("keys");
@@ -270,7 +275,7 @@
 
     // ── WebAuthn 鍵ペアラッピング用関数 ──
     async function encryptKeyPairJWK(publicJwk, privateJwk) {
-      // ※ 従来の処理は使用せず、storeKeyPair 内で秘密鍵のみを暗号化するため、この関数は未使用
+      // ※ 本実装では、storeKeyPair内で秘密鍵のみを暗号化するため、本関数は未使用
       return;
     }
     async function decryptPrivateKeyJWK(ivBase64, ciphertextBase64) {
@@ -300,11 +305,18 @@
           encrypted: true,
           iv: arrayBufferToBase64(iv),
           encryptedKeyPair: arrayBufferToBase64(encBuffer),
-          loginName: webauthnUserHandle,
+          loginName: webauthnUserHandle, // ここで作成者を記録
           publicKeyJwk: publicJwk
         };
       } else {
-        record = { name, type, publicKeyJwk: publicJwk, privateKeyJwk: privateJwk, encrypted: false };
+        record = { 
+          name, 
+          type, 
+          publicKeyJwk: publicJwk, 
+          privateKeyJwk: privateJwk, 
+          encrypted: false,
+          loginName: webauthnUserHandle ? webauthnUserHandle : "不明"
+        };
       }
       await storeKeyRecord(record);
     }
@@ -370,7 +382,7 @@
               keyStore[record.name] = { encrypted: true, type: record.type, loginName: record.loginName };
             }
           } else {
-            // 非暗号化レコードの処理（従来と同様）
+            // 非暗号化レコードの処理
             if (record.publicKeyJwk) {
               if (record.type === "RSA") {
                 const pubKey = await crypto.subtle.importKey(
@@ -491,7 +503,8 @@
             type: keyPair.type,
             bitLength: keyPair.bitLength,
             curve: keyPair.curve,
-            encrypted: false
+            encrypted: false,
+            loginName: webauthnUserHandle ? webauthnUserHandle : "不明"
           };
           importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
           const li = document.createElement('li');
@@ -742,7 +755,8 @@
             privateKey: keyPair.privateKey, 
             type: "RSA",
             bitLength: RSA_MODULUS_LENGTH,
-            encrypted: webauthnKey ? true : false
+            encrypted: webauthnKey ? true : false,
+            loginName: webauthnUserHandle ? webauthnUserHandle : "不明"
           };
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
@@ -766,7 +780,8 @@
             privateKey: keyPair.privateKey, 
             type: "EC",
             curve: DEFAULT_EC_CURVE,
-            encrypted: webauthnKey ? true : false
+            encrypted: webauthnKey ? true : false,
+            loginName: webauthnUserHandle ? webauthnUserHandle : "不明"
           };
           const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
           const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
@@ -851,7 +866,7 @@
 
         // エクスポートボタンの表示条件を制御
         if(keyStore[name].encrypted){
-            // 暗号化された鍵の場合
+            // 暗号化された鍵の場合、ログイン中かつ鍵作成者が一致していれば表示
             if(webauthnKey && keyStore[name].loginName === webauthnUserHandle){
                 tdOps.appendChild(exportPubBtn);
                 tdOps.appendChild(document.createTextNode("　"));
@@ -1006,66 +1021,74 @@
     window.addEventListener("load", () => { initDB(); });
 
     // ── WebAuthn 登録／ログイン処理 ──
-async function webAuthnRegister() {
-  const userName = document.getElementById("webauthnUserName").value.trim();
-  if (!userName) { alert("ユーザー名を入力してください。"); return; }
-  const challenge = new Uint8Array(32);
-  window.crypto.getRandomValues(challenge);
-  const userId = new Uint8Array(16);
-  window.crypto.getRandomValues(userId);
-  const publicKeyOptions = {
-    challenge,
-    rp: { name: "PubliCrypt", id: window.location.hostname },
-    user: { id: userId, name: userName, displayName: userName },
-    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "preferred" },
-    timeout: 60000,
-    attestation: "none"
-  };
-  try {
-    const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
-    // 常に credential.id を使用する
-    const rawId = new TextEncoder().encode(credential.id);
-    webauthnUserHandle = arrayBufferToBase64(rawId);
-    await storeUserMapping(webauthnUserHandle, userName);
-    const hash = await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON);
-    webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-    webauthnUser = userName;
-    updateLoginStatus();
-    alert("WebAuthn登録完了: " + webauthnUser);
-  } catch (err) {
-    alert("WebAuthn登録エラー: " + err.message);
-  }
-}
-async function webAuthnLogin() {
-  const challenge = new Uint8Array(32);
-  window.crypto.getRandomValues(challenge);
-  const publicKeyOptions = {
-    challenge,
-    timeout: 60000,
-    userVerification: "preferred"
-  };
-  try {
-    const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
-    const hash = await crypto.subtle.digest("SHA-256", assertion.response.clientDataJSON);
-    webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
-    // 常に assertion.id を使用する
-    const rawId = new TextEncoder().encode(assertion.id);
-    webauthnUserHandle = arrayBufferToBase64(rawId);
-    let mapping;
-    try {
-      mapping = await getUserMapping(webauthnUserHandle);
-    } catch (e) {
-      mapping = null;
+    async function webAuthnRegister() {
+      const userName = document.getElementById("webauthnUserName").value.trim();
+      if (!userName) { alert("ユーザー名を入力してください。"); return; }
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const userId = new Uint8Array(16);
+      window.crypto.getRandomValues(userId);
+      const publicKeyOptions = {
+        challenge,
+        rp: { name: "PubliCrypt", id: window.location.hostname },
+        user: { id: userId, name: userName, displayName: userName },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "preferred" },
+        timeout: 60000,
+        attestation: "none"
+      };
+      try {
+        const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
+        // 常に credential.id を使用する
+        const rawId = new TextEncoder().encode(credential.id);
+        webauthnUserHandle = arrayBufferToBase64(rawId);
+        await storeUserMapping(webauthnUserHandle, userName);
+        // 鍵導出: credential.idと固定saltを結合してhash化
+        const combined = new Uint8Array(rawId.length + FIXED_SALT.length);
+        combined.set(rawId);
+        combined.set(FIXED_SALT, rawId.length);
+        const hash = await crypto.subtle.digest("SHA-256", combined);
+        webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
+        webauthnUser = userName;
+        updateLoginStatus();
+        alert("WebAuthn登録完了: " + webauthnUser);
+      } catch (err) {
+        alert("WebAuthn登録エラー: " + err.message);
+      }
     }
-    webauthnUser = mapping ? mapping.userName : "(不明)";
-    updateLoginStatus();
-    alert("WebAuthnログイン成功: " + webauthnUser);
-    refreshKeyList();
-  } catch (err) {
-    alert("WebAuthnログインエラー: " + err.message);
-  }
-}
+    async function webAuthnLogin() {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const publicKeyOptions = {
+        challenge,
+        timeout: 60000,
+        userVerification: "preferred"
+      };
+      try {
+        const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
+        // 常に assertion.id を使用する
+        const rawId = new TextEncoder().encode(assertion.id);
+        webauthnUserHandle = arrayBufferToBase64(rawId);
+        // credential.idと固定saltを結合してhash化
+        const combined = new Uint8Array(rawId.length + FIXED_SALT.length);
+        combined.set(rawId);
+        combined.set(FIXED_SALT, rawId.length);
+        const hash = await crypto.subtle.digest("SHA-256", combined);
+        webauthnKey = await crypto.subtle.importKey("raw", hash, { name: AES_ALGORITHM }, false, ["encrypt", "decrypt"]);
+        let mapping;
+        try {
+          mapping = await getUserMapping(webauthnUserHandle);
+        } catch (e) {
+          mapping = null;
+        }
+        webauthnUser = mapping ? mapping.userName : "(不明)";
+        updateLoginStatus();
+        alert("WebAuthnログイン成功: " + webauthnUser);
+        refreshKeyList();
+      } catch (err) {
+        alert("WebAuthnログインエラー: " + err.message);
+      }
+    }
     document.getElementById("webauthnRegisterButton").addEventListener("click", webAuthnRegister);
     document.getElementById("webauthnLoginButton").addEventListener("click", webAuthnLogin);
 
