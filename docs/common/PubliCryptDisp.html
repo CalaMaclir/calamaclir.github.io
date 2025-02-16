@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PubliCryptDisp</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1, h2, h3 { margin-bottom: 10px; }
+    /* ヘッダー解析用のファイルドロップ領域 */
+    #headerFileDropArea {
+      border: 2px dashed #888;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    ul { list-style: none; padding-left: 0; }
+    li { margin-bottom: 15px; padding: 5px; border-bottom: 1px dotted #aaa; }
+    #headerOutput { margin-top: 10px; }
+    .entry-info {
+      margin-bottom: 3px;
+      line-height: 1.4;
+    }
+    /* 識別子の長い文字列を適切に折り返す */
+    .identifier {
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    /* 一致する秘密鍵の表示強調 */
+    .matched-key {
+      background-color: #e0f7fa;
+      color: #00796b;
+      font-weight: bold;
+      padding: 3px 6px;
+      margin-top: 5px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1>PubliCryptDisp</h1>
+  
+  <!-- ファイルヘッダー解析セクション -->
+  <section id="headerAnalysis">
+    <h2>ファイルヘッダー解析</h2>
+    <div id="headerFileDropArea">ここにファイルをドロップ</div>
+    <input type="file" id="headerFileSelect">
+    <button id="analyzeBtn">解析</button>
+    <div id="headerOutput"></div>
+  </section>
+  
+  <!-- 鍵一覧表示セクション（IndexedDB の内容） -->
+  <section id="keyListSection">
+    <h2>鍵一覧</h2>
+    <table id="keyTable">
+      <thead>
+        <tr>
+          <th>鍵名</th>
+          <th>種別</th>
+          <th>鍵情報</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- IndexedDB から読み込んだ鍵が表示されます -->
+      </tbody>
+    </table>
+  </section>
+  
+  <!-- 共通処理はcommon.jsにまとめています -->
+  <script src="common.js"></script>
+  <script>
+    // ※ common.js により db, keyStore, importedPrivateKeys, および各ユーティリティ関数は既に定義済み
+
+    // ── ファイルヘッダー解析専用の処理 ──
+    let fileToAnalyze = null;
+    const headerFileDropArea = document.getElementById("headerFileDropArea");
+    const headerFileSelect = document.getElementById("headerFileSelect");
+    const headerOutputDiv = document.getElementById("headerOutput");
+    
+    headerFileDropArea.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      headerFileDropArea.style.borderColor = "#000";
+    });
+    headerFileDropArea.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      headerFileDropArea.style.borderColor = "#888";
+    });
+    headerFileDropArea.addEventListener("drop", (e) => {
+      e.preventDefault();
+      headerFileDropArea.style.borderColor = "#888";
+      if (e.dataTransfer.files.length > 0) {
+        fileToAnalyze = e.dataTransfer.files[0];
+        headerFileDropArea.textContent = fileToAnalyze.name;
+      }
+    });
+    headerFileSelect.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        fileToAnalyze = e.target.files[0];
+        headerFileDropArea.textContent = fileToAnalyze.name;
+      }
+    });
+    
+    document.getElementById("analyzeBtn").addEventListener("click", () => {
+      if (!fileToAnalyze) {
+        alert("解析するファイルを選択してください。");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const buffer = e.target.result;
+        parseFileHeader(buffer);
+      };
+      reader.readAsArrayBuffer(fileToAnalyze);
+    });
+    
+    // ファイルヘッダー解析処理
+    // ※ 各エントリーは以下の形式と仮定：
+    // RSAエントリー: [1バイト type=0] [4バイト identifier長] [identifier (UTF-8)] [4バイト encryptedKey長] [encryptedKey (スキップ)]
+    // ECエントリー: [1バイト type=1] [4バイト recipientId長] [recipientId (バイト列)] [4バイト ephemeralPub長] [ephemeralPub (スキップ)] [4バイト wrappingOutput長] [wrappingOutput (スキップ)]
+    function parseFileHeader(buffer) {
+      const fileBuffer = new Uint8Array(buffer);
+      const view = new DataView(buffer);
+      let offset = 0;
+      headerOutputDiv.innerHTML = "";
+      
+      if (fileBuffer.length < 4) {
+        headerOutputDiv.textContent = "ファイルが不正です。";
+        return;
+      }
+      
+      const entryCount = readInt32LE(view, offset);
+      offset += 4;
+      const headerEntries = [];
+      const decoder = new TextDecoder();
+      
+      for (let i = 0; i < entryCount; i++) {
+        if (offset >= fileBuffer.length) break;
+        const entryType = fileBuffer[offset];
+        offset += 1;
+        if (entryType === 0) { // RSAエントリー
+          const idLen = readInt32LE(view, offset);
+          offset += 4;
+          const idBytes = fileBuffer.slice(offset, offset + idLen);
+          offset += idLen;
+          const encKeyLen = readInt32LE(view, offset);
+          offset += 4;
+          offset += encKeyLen; // encryptedKey 部分はスキップ
+          const identifier = decoder.decode(idBytes);
+          headerEntries.push({ type: "RSA", identifier: identifier });
+        } else if (entryType === 1) { // ECエントリー
+          const idLen = readInt32LE(view, offset);
+          offset += 4;
+          const recipientIdBytes = fileBuffer.slice(offset, offset + idLen);
+          offset += idLen;
+          const ephLen = readInt32LE(view, offset);
+          offset += 4;
+          offset += ephLen; // ephemeralPub 部分をスキップ
+          const wrapLen = readInt32LE(view, offset);
+          offset += 4;
+          offset += wrapLen; // wrappingOutput 部分をスキップ
+          const recipientIdStr = btoa(String.fromCharCode(...recipientIdBytes));
+          headerEntries.push({ type: "EC", identifier: recipientIdStr });
+        } else {
+          headerOutputDiv.innerHTML += "不明なエントリータイプが含まれています。<br>";
+          return;
+        }
+      }
+      
+      let html = "<h3>ヘッダー情報</h3><ul>";
+      headerEntries.forEach((entry, index) => {
+        html += `<li>
+                   <div class="entry-info">エントリー ${index+1}</div>
+                   <div class="entry-info">タイプ: ${entry.type}</div>
+                   <div class="entry-info identifier">識別子: ${entry.identifier}</div>`;
+        const match = importedPrivateKeys.find(k => {
+          if (entry.type === "RSA" && k.type === "RSA") {
+            return k.identifier === entry.identifier;
+          } else if (entry.type === "EC" && k.type === "EC") {
+            return k.identifier === entry.identifier;
+          }
+          return false;
+        });
+        if (match) {
+          let keyInfo = "";
+          if (match.type === "RSA") {
+            keyInfo = keyStore[match.name].bitLength ? keyStore[match.name].bitLength + " bit" : "N/A";
+          } else if (match.type === "EC") {
+            keyInfo = keyStore[match.name].curve ? keyStore[match.name].curve : "N/A";
+          }
+          html += `<div class="matched-key">一致する秘密鍵: ${match.name} [${match.type}] - 鍵情報: ${keyInfo}</div>`;
+        }
+        html += `</li>`;
+      });
+      html += "</ul>";
+      headerOutputDiv.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
