@@ -65,7 +65,7 @@
   </section>
   
   <div>鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます。</div>
-  <div><a href="https://note.com/maclir_cala/n/n170b2f13c083" target=_blank>簡単な説明はこちらをごらんください</a></div>
+  <div><a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank">簡単な説明はこちらをごらんください</a></div>
   <!-- スピナー -->
   <div id="spinner">処理中...</div>
 
@@ -217,8 +217,10 @@
     }
     function arrayBufferToBase64(buffer) {
       let binary = '';
-      let bytes = (buffer instanceof Uint8Array) ? buffer : new Uint8Array(buffer);
-      for (let b of bytes) { binary += String.fromCharCode(b); }
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
       return btoa(binary);
     }
     function base64ToUint8Array(b64) {
@@ -231,10 +233,15 @@
       const binaryString = atob(modulusBase64);
       return binaryString.length * 8;
     }
+    // SHA-256 ハッシュ化（credential.rawId 等に使用）
+    async function hashCredentialId(rawId) {
+      const hashBuffer = await crypto.subtle.digest("SHA-256", rawId);
+      return arrayBufferToBase64(hashBuffer);
+    }
 
     // ── IndexedDB 関連 ──
     function initDB() {
-      // バージョン2で、"keys"に加え、"name"（WebAuthn登録用）と"skeys"（暗号化済み鍵用）を作成
+      // バージョン2："keys"、WebAuthn用 "name"、暗号化鍵 "skeys" を作成
       const request = indexedDB.open("PubliCryptDB", 2);
       request.onupgradeneeded = function(e) {
         db = e.target.result;
@@ -242,7 +249,7 @@
           db.createObjectStore("keys", { keyPath: "name" });
         }
         if (!db.objectStoreNames.contains("name")) {
-          // key: credential id（base64文字列）、value: {id, name}
+          // key: ハッシュ化済み credential id、value: {id, name}
           db.createObjectStore("name", { keyPath: "id" });
         }
         if (!db.objectStoreNames.contains("skeys")) {
@@ -368,11 +375,9 @@
     }
 
     // ── WebAuthn 登録／ログイン機能 ──
-    // 登録：入力された名前で WebAuthn の credential を生成し、credential ID と名前を IndexedDB の "name" ストアへ保存
     async function registerUser() {
       const name = document.getElementById("registerNameInput").value.trim();
       if (!name) { alert("名前を入力してください"); return; }
-      // ユーザーIDとしてランダムな 16 バイトを生成
       const userId = new Uint8Array(16);
       window.crypto.getRandomValues(userId);
       const publicKeyOptions = {
@@ -390,7 +395,7 @@
       };
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
-        const credId = arrayBufferToBase64(credential.rawId);
+        const credId = await hashCredentialId(credential.rawId);
         const tx = db.transaction("name", "readwrite");
         const store = tx.objectStore("name");
         store.put({ id: credId, name: name });
@@ -401,7 +406,6 @@
         alert("登録エラー: " + e.message);
       }
     }
-    // ログイン：WebAuthn で認証後、credential ID を元に "name" ストアから名前を検索し、ログイン状態にする
     async function loginUser() {
       const publicKeyRequestOptions = {
         challenge: window.crypto.getRandomValues(new Uint8Array(32)),
@@ -410,7 +414,7 @@
       };
       try {
         const credential = await navigator.credentials.get({ publicKey: publicKeyRequestOptions });
-        const credId = arrayBufferToBase64(credential.rawId);
+        const credId = await hashCredentialId(credential.rawId);
         const tx = db.transaction("name", "readonly");
         const store = tx.objectStore("name");
         const req = store.get(credId);
@@ -432,7 +436,7 @@
       }
     }
 
-    // ── 鍵一覧再表示 ──
+    // ── 鍵管理再表示 ──
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
@@ -466,7 +470,12 @@
         exportPrivBtn.style.fontWeight = "bold";
         exportPrivBtn.onclick = () => {
           if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。漏洩するとシステム全体の安全性に影響します。\n本当にエクスポートしますか？")) {
-            exportKey(name, "private");
+            // unencrypted があれば通常エクスポート、暗号化済みの場合は復号して出力
+            if(keyStore[name]) {
+              exportKey(name, "private", false);
+            } else {
+              exportKey(name, "private", true);
+            }
           }
         };
         tdOps.appendChild(document.createTextNode("　"));
@@ -476,8 +485,8 @@
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name);
         tdOps.appendChild(deleteBtn);
-        // ログイン中なら「鍵暗号化」ボタンを追加
-        if (currentUser) {
+        // ログイン中なら「鍵暗号化」ボタンを追加（未暗号化の場合）
+        if (currentUser && keyStore[name]) {
           const encryptKeyBtn = document.createElement("button");
           encryptKeyBtn.textContent = "鍵暗号化";
           encryptKeyBtn.onclick = () => encryptKeyForKey(name);
@@ -498,7 +507,6 @@
         tdType.textContent = record.type;
         tr.appendChild(tdType);
         const tdKeyInfo = document.createElement("td");
-        // 暗号化済みであることを表示
         tdKeyInfo.textContent = "暗号化済み";
         tr.appendChild(tdKeyInfo);
         const tdOps = document.createElement("td");
@@ -506,7 +514,6 @@
         exportPubBtn.textContent = "公開鍵エクスポート";
         exportPubBtn.onclick = () => exportKey(name, "public", true);
         tdOps.appendChild(exportPubBtn);
-        // 暗号化済みの場合はエクスポート／暗号化操作を無効化
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name, true);
@@ -518,80 +525,80 @@
     }
 
     // ── 鍵暗号化処理 ──
-async function encryptKeyForKey(keyName) {
-  if (!currentUser) { 
-    alert("ログインが必要です"); 
-    return; 
-  }
-  const keyRecord = keyStore[keyName];
-  if (!keyRecord) { 
-    alert("鍵が見つかりません"); 
-    return; 
-  }
-  
-  // すべての非同期処理をトランザクション開始前に実施する
-  const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  const enc = new TextEncoder();
-  
-  // PBKDF2 で共通鍵のベースを導出
-  const baseKeyMaterial = await window.crypto.subtle.importKey(
-    "raw", enc.encode(currentUser.id),
-    "PBKDF2", false, ["deriveKey"]
-  );
-  const symmetricKey = await window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt,
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    baseKeyMaterial,
-    { name: AES_ALGORITHM, length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
-  
-  // 秘密鍵をエクスポートして文字列化
-  const privateJwk = await crypto.subtle.exportKey("jwk", keyRecord.privateKey);
-  const privateJwkStr = JSON.stringify(privateJwk);
-  
-  const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
-  const encryptedPrivateBuffer = await crypto.subtle.encrypt(
-    { name: AES_ALGORITHM, iv: iv },
-    symmetricKey,
-    enc.encode(privateJwkStr)
-  );
-  
-  // 公開鍵もエクスポート（await をここで済ませる）
-  const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyRecord.publicKey);
-  
-  // ここからはトランザクション内で同期的に処理する
-  const tx = db.transaction("skeys", "readwrite");
-  const store = tx.objectStore("skeys");
-  
-  const record = {
-    name: keyName,
-    type: keyRecord.type,
-    publicKeyJwk: publicKeyJwk,
-    encryptedPrivateKey: {
-      iv: Array.from(iv),
-      salt: Array.from(salt),
-      ciphertext: Array.from(new Uint8Array(encryptedPrivateBuffer))
+    async function encryptKeyForKey(keyName) {
+      if (!currentUser) { 
+        alert("ログインが必要です"); 
+        return; 
+      }
+      const keyRecord = keyStore[keyName];
+      if (!keyRecord) { 
+        alert("鍵が見つかりません"); 
+        return; 
+      }
+      
+      // 非同期処理：PBKDF2 による共通鍵導出、秘密鍵のエクスポート・暗号化
+      const salt = window.crypto.getRandomValues(new Uint8Array(16));
+      const enc = new TextEncoder();
+      const baseKeyMaterial = await window.crypto.subtle.importKey(
+        "raw", enc.encode(currentUser.id),
+        "PBKDF2", false, ["deriveKey"]
+      );
+      const symmetricKey = await window.crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        baseKeyMaterial,
+        { name: AES_ALGORITHM, length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+      );
+      const privateJwk = await crypto.subtle.exportKey("jwk", keyRecord.privateKey);
+      const privateJwkStr = JSON.stringify(privateJwk);
+      const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
+      const encryptedPrivateBuffer = await crypto.subtle.encrypt(
+        { name: AES_ALGORITHM, iv: iv },
+        symmetricKey,
+        enc.encode(privateJwkStr)
+      );
+      const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyRecord.publicKey);
+      
+      // 識別子の生成：RSA は n、EC は公開鍵 raw を利用
+      let identifier;
+      if (keyRecord.type === "RSA") {
+        identifier = base64UrlToBase64(publicKeyJwk.n);
+      } else if (keyRecord.type === "EC") {
+        const raw = await crypto.subtle.exportKey("raw", keyRecord.publicKey);
+        identifier = arrayBufferToBase64(raw);
+      }
+      
+      // すべての準備完了後、トランザクション開始
+      const tx = db.transaction("skeys", "readwrite");
+      const store = tx.objectStore("skeys");
+      const record = {
+        name: keyName,
+        type: keyRecord.type,
+        publicKeyJwk: publicKeyJwk,
+        encryptedPrivateKey: {
+          iv: Array.from(iv),
+          salt: Array.from(salt),
+          ciphertext: Array.from(new Uint8Array(encryptedPrivateBuffer))
+        },
+        identifier: identifier,
+        curve: keyRecord.curve || null
+      };
+      store.put(record);
+      tx.oncomplete = async () => {
+        await deleteKeyRecord(keyName);
+        delete keyStore[keyName];
+        alert("鍵 " + keyName + " の暗号化が完了しました。");
+        loadEncryptedKeysFromDB();
+      };
     }
-  };
-  
-  store.put(record);
-  
-  tx.oncomplete = async () => {
-    // 暗号化後、元の鍵は "keys" から削除
-    await deleteKeyRecord(keyName);
-    delete keyStore[keyName];
-    alert("鍵 " + keyName + " の暗号化が完了しました。");
-    loadEncryptedKeysFromDB();
-  };
-}
 
-    // ── XML形式の鍵インポート／エクスポート等（以下は従来処理） ──
+    // ── XML形式の鍵インポート／エクスポート（従来処理） ──
     function getXmlTagContent(xmlDoc, tagName) {
       const el = xmlDoc.getElementsByTagName(tagName)[0];
       return el ? el.textContent.trim() : null;
@@ -939,7 +946,10 @@ async function encryptKeyForKey(keyName) {
     // ── ファイル復号処理 ──
     async function decryptFile(file) {
       try {
-        if (importedPrivateKeys.length === 0) {
+        if (!currentUser) {
+          throw new Error("復号にはログインが必要です。");
+        }
+        if (importedPrivateKeys.length === 0 && Object.keys(encryptedKeyStore).length === 0) {
           throw new Error("復号のための秘密鍵が存在しません。");
         }
         const fileBuffer = new Uint8Array(await file.arrayBuffer());
@@ -991,6 +1001,7 @@ async function encryptKeyForKey(keyName) {
         const payloadEnc = fileBuffer.slice(offset);
         let aesKeyRaw;
         let found = false;
+        // まずは unencrypted な鍵で試す
         for (let entry of headerEntries) {
           if (entry.type === 0) {
             for (let priv of importedPrivateKeys.filter(k => k.type === "RSA")) {
@@ -1034,6 +1045,51 @@ async function encryptKeyForKey(keyName) {
           }
           if (found) break;
         }
+        // unencrypted鍵が見つからない場合、encryptedKeyStore から試す
+        if (!found) {
+          for (let entry of headerEntries) {
+            if (entry.type === 0) {
+              for (let recName in encryptedKeyStore) {
+                const rec = encryptedKeyStore[recName];
+                if (rec.identifier === entry.identifier) {
+                  try {
+                    const salt = new Uint8Array(rec.encryptedPrivateKey.salt);
+                    const ivForPriv = new Uint8Array(rec.encryptedPrivateKey.iv);
+                    const ciphertext = new Uint8Array(rec.encryptedPrivateKey.ciphertext);
+                    const baseKeyMaterial = await window.crypto.subtle.importKey(
+                      "raw", new TextEncoder().encode(currentUser.id),
+                      "PBKDF2", false, ["deriveKey"]
+                    );
+                    const symmetricKey = await window.crypto.subtle.deriveKey(
+                      { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                      baseKeyMaterial,
+                      { name: AES_ALGORITHM, length: 256 },
+                      true,
+                      ["decrypt"]
+                    );
+                    const decryptedBuffer = await crypto.subtle.decrypt(
+                      { name: AES_ALGORITHM, iv: ivForPriv },
+                      symmetricKey,
+                      ciphertext
+                    );
+                    const privateJwkStr = new TextDecoder().decode(decryptedBuffer);
+                    const privateJwk = JSON.parse(privateJwkStr);
+                    const privKey = await crypto.subtle.importKey(
+                      "jwk", privateJwk,
+                      rec.type === "RSA" ? { name: RSA_ALGORITHM, hash: RSA_HASH } : { name: EC_ALGORITHM, namedCurve: rec.curve },
+                      true,
+                      rec.type === "RSA" ? ["decrypt"] : ["deriveKey"]
+                    );
+                    aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: RSA_ALGORITHM }, privKey, entry.encryptedKey));
+                    found = true;
+                    break;
+                  } catch (err) { }
+                }
+              }
+            }
+            if (found) break;
+          }
+        }
         if (!found || !aesKeyRaw) {
           throw new Error("一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。");
         }
@@ -1054,7 +1110,7 @@ async function encryptKeyForKey(keyName) {
           throw new Error("復号結果が不正です。");
         }
         const fnameBytes = payloadPlain.slice(4, 4 + fnameLen);
-        const originalFileName = decoder.decode(fnameBytes);
+        const originalFileName = new TextDecoder().decode(fnameBytes);
         const fileContent = payloadPlain.slice(4 + fnameLen);
         const blob = new Blob([fileContent], { type: "application/octet-stream" });
         const a = document.createElement("a");
@@ -1066,29 +1122,141 @@ async function encryptKeyForKey(keyName) {
       }
     }
 
-    // ── ボタン押下処理 ──
-    document.getElementById('encryptBtn').addEventListener('click', async () => {
-      if (filesToProcess.length === 0) {
-        alert("暗号化するファイルがありません。");
-        return;
+    // ── 鍵エクスポート ──
+    // type: "public" または "private"
+    // encrypted: true の場合、encryptedKeyStore から復号してエクスポート
+    async function exportKey(name, type, encrypted = false) {
+      const enc = new TextEncoder();
+      const dec = new TextDecoder();
+      if (!encrypted) {
+        const keyPair = keyStore[name];
+        if (!keyPair) { alert("鍵が存在しません"); return; }
+        let key;
+        if (type === "public") {
+          key = keyPair.publicKey;
+        } else if (type === "private") {
+          key = keyPair.privateKey;
+        }
+        try {
+          const jwk = await crypto.subtle.exportKey("jwk", key);
+          let xml;
+          if (type === "public") {
+            xml = convertPublicJwkToXml(jwk);
+          } else {
+            xml = convertPrivateJwkToXml(jwk);
+          }
+          const exportArea = document.getElementById("exportArea");
+          if (type === "private") {
+            exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
+                                    <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
+          } else {
+            exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果</h3>`;
+          }
+          const textarea = document.createElement("textarea");
+          textarea.rows = 10;
+          textarea.value = xml;
+          exportArea.appendChild(textarea);
+          const blob = new Blob([xml], { type: "application/xml" });
+          const url = URL.createObjectURL(blob);
+          const downloadLink = document.createElement("a");
+          downloadLink.href = url;
+          downloadLink.download = name + (type === "public" ? ".pubkey" : ".pvtkey");
+          downloadLink.textContent = "Download " + (type === "public" ? "公開鍵" : "秘密鍵");
+          exportArea.appendChild(document.createElement("br"));
+          exportArea.appendChild(downloadLink);
+        } catch (e) {
+          console.error(e);
+          alert("エクスポートエラー: " + e);
+        }
+      } else {
+        // 暗号化済みの秘密鍵の場合
+        if (type !== "private") {
+          alert("暗号化済みの公開鍵は通常通りエクスポートできます。");
+          return;
+        }
+        if (!currentUser) {
+          alert("ログインが必要です");
+          return;
+        }
+        const record = encryptedKeyStore[name];
+        if (!record) { alert("暗号化済み鍵が存在しません"); return; }
+        try {
+          const salt = new Uint8Array(record.encryptedPrivateKey.salt);
+          const iv = new Uint8Array(record.encryptedPrivateKey.iv);
+          const ciphertext = new Uint8Array(record.encryptedPrivateKey.ciphertext);
+          const baseKeyMaterial = await crypto.subtle.importKey(
+            "raw", enc.encode(currentUser.id),
+            "PBKDF2", false, ["deriveKey"]
+          );
+          const symmetricKey = await crypto.subtle.deriveKey(
+            { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+            baseKeyMaterial,
+            { name: AES_ALGORITHM, length: 256 },
+            true,
+            ["decrypt"]
+          );
+          const decryptedBuffer = await crypto.subtle.decrypt(
+            { name: AES_ALGORITHM, iv: iv },
+            symmetricKey,
+            ciphertext
+          );
+          const privateJwkStr = dec.decode(decryptedBuffer);
+          const privateJwk = JSON.parse(privateJwkStr);
+          const privKey = await crypto.subtle.importKey(
+            "jwk", privateJwk,
+            record.type === "RSA" ? { name: RSA_ALGORITHM, hash: RSA_HASH } : { name: EC_ALGORITHM, namedCurve: record.curve },
+            true,
+            record.type === "RSA" ? ["decrypt"] : ["deriveKey"]
+          );
+          const exportedJwk = await crypto.subtle.exportKey("jwk", privKey);
+          const xml = convertPrivateJwkToXml(exportedJwk);
+          const exportArea = document.getElementById("exportArea");
+          exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果 (復号済み)</h3>
+                                  <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いに十分ご注意ください。</p>`;
+          const textarea = document.createElement("textarea");
+          textarea.rows = 10;
+          textarea.value = xml;
+          exportArea.appendChild(textarea);
+          const blob = new Blob([xml], { type: "application/xml" });
+          const url = URL.createObjectURL(blob);
+          const downloadLink = document.createElement("a");
+          downloadLink.href = url;
+          downloadLink.download = name + ".pvtkey";
+          downloadLink.textContent = "Download 秘密鍵 (復号済み)";
+          exportArea.appendChild(document.createElement("br"));
+          exportArea.appendChild(downloadLink);
+        } catch (e) {
+          console.error(e);
+          alert("復号・エクスポートエラー: " + e.message);
+        }
       }
-      showSpinner();
-      for (let file of filesToProcess) {
-        await encryptFile(file);
+    }
+    function convertPublicJwkToXml(jwk) {
+      if (jwk.kty === "RSA") {
+        const modulus = base64UrlToBase64(jwk.n);
+        const exponent = base64UrlToBase64(jwk.e);
+        return `<RSAKeyValue><Modulus>${modulus}</Modulus><Exponent>${exponent}</Exponent></RSAKeyValue>`;
+      } else if (jwk.kty === "EC") {
+        return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y></ECKeyValue>`;
       }
-      resetUI();
-    });
-    document.getElementById('decryptBtn').addEventListener('click', async () => {
-      if (filesToProcess.length === 0) {
-        alert("復号するファイルがありません。");
-        return;
+    }
+    function convertPrivateJwkToXml(jwk) {
+      if (jwk.kty === "RSA") {
+        const modulus = base64UrlToBase64(jwk.n);
+        const exponent = base64UrlToBase64(jwk.e);
+        const d = base64UrlToBase64(jwk.d);
+        const p = base64UrlToBase64(jwk.p);
+        const q = base64UrlToBase64(jwk.q);
+        const dp = base64UrlToBase64(jwk.dp);
+        const dq = base64UrlToBase64(jwk.dq);
+        const inverseQ = base64UrlToBase64(jwk.qi);
+        return `<RSAKeyValue><Modulus>${modulus}</Modulus><Exponent>${exponent}</Exponent>` +
+               `<P>${p}</P><Q>${q}</Q><DP>${dp}</DP><DQ>${dq}</DQ><InverseQ>${inverseQ}</InverseQ>` +
+               `<D>${d}</D></RSAKeyValue>`;
+      } else if (jwk.kty === "EC") {
+        return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y><D>${jwk.d}</D></ECKeyValue>`;
       }
-      showSpinner();
-      for (let file of filesToProcess) {
-        await decryptFile(file);
-      }
-      resetUI();
-    });
+    }
 
     // ── 鍵生成 ──
     async function generateKeyPair(name, algType) {
@@ -1159,102 +1327,7 @@ async function encryptKeyForKey(keyName) {
       const algType = algSelect.value;
       await generateKeyPair(keyName, algType);
     });
-    // ── 鍵エクスポート ──
-    function convertPublicJwkToXml(jwk) {
-      if (jwk.kty === "RSA") {
-        const modulus = base64UrlToBase64(jwk.n);
-        const exponent = base64UrlToBase64(jwk.e);
-        return `<RSAKeyValue><Modulus>${modulus}</Modulus><Exponent>${exponent}</Exponent></RSAKeyValue>`;
-      } else if (jwk.kty === "EC") {
-        return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y></ECKeyValue>`;
-      }
-    }
-    function convertPrivateJwkToXml(jwk) {
-      if (jwk.kty === "RSA") {
-        const modulus = base64UrlToBase64(jwk.n);
-        const exponent = base64UrlToBase64(jwk.e);
-        const d = base64UrlToBase64(jwk.d);
-        const p = base64UrlToBase64(jwk.p);
-        const q = base64UrlToBase64(jwk.q);
-        const dp = base64UrlToBase64(jwk.dp);
-        const dq = base64UrlToBase64(jwk.dq);
-        const inverseQ = base64UrlToBase64(jwk.qi);
-        return `<RSAKeyValue><Modulus>${modulus}</Modulus><Exponent>${exponent}</Exponent>` +
-               `<P>${p}</P><Q>${q}</Q><DP>${dp}</DP><DQ>${dq}</DQ><InverseQ>${inverseQ}</InverseQ>` +
-               `<D>${d}</D></RSAKeyValue>`;
-      } else if (jwk.kty === "EC") {
-        return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y><D>${jwk.d}</D></ECKeyValue>`;
-      }
-    }
-    async function exportKey(name, type, encrypted = false) {
-      let key;
-      if (!encrypted) {
-        const keyPair = keyStore[name];
-        if (!keyPair) { alert("鍵が存在しません"); return; }
-        if (type === "public") {
-          key = keyPair.publicKey;
-        } else if (type === "private") {
-          key = keyPair.privateKey;
-        }
-      } else {
-        // 暗号化済みの場合は、"skeys" から取得
-        const record = encryptedKeyStore[name];
-        if (!record) { alert("暗号化済み鍵が存在しません"); return; }
-        if (type === "public") {
-          const jwk = record.publicKeyJwk;
-          const xml = convertPublicJwkToXml(jwk);
-          const exportArea = document.getElementById("exportArea");
-          exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果 (暗号化済み)</h3>`;
-          const textarea = document.createElement("textarea");
-          textarea.rows = 10;
-          textarea.value = xml;
-          exportArea.appendChild(textarea);
-          const blob = new Blob([xml], { type: "application/xml" });
-          const url = URL.createObjectURL(blob);
-          const downloadLink = document.createElement("a");
-          downloadLink.href = url;
-          downloadLink.download = name + ".pubkey";
-          downloadLink.textContent = "Download 公開鍵";
-          exportArea.appendChild(document.createElement("br"));
-          exportArea.appendChild(downloadLink);
-          return;
-        } else {
-          alert("暗号化済み秘密鍵は直接エクスポートできません。");
-          return;
-        }
-      }
-      try {
-        const jwk = await crypto.subtle.exportKey("jwk", key);
-        let xml;
-        if (type === "public") {
-          xml = convertPublicJwkToXml(jwk);
-        } else {
-          xml = convertPrivateJwkToXml(jwk);
-        }
-        const exportArea = document.getElementById("exportArea");
-        if (type === "private") {
-          exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
-                                  <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
-        } else {
-          exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果</h3>`;
-        }
-        const textarea = document.createElement("textarea");
-        textarea.rows = 10;
-        textarea.value = xml;
-        exportArea.appendChild(textarea);
-        const blob = new Blob([xml], { type: "application/xml" });
-        const url = URL.createObjectURL(blob);
-        const downloadLink = document.createElement("a");
-        downloadLink.href = url;
-        downloadLink.download = name + (type === "public" ? ".pubkey" : ".pvtkey");
-        downloadLink.textContent = "Download " + (type === "public" ? "公開鍵" : "秘密鍵");
-        exportArea.appendChild(document.createElement("br"));
-        exportArea.appendChild(downloadLink);
-      } catch (e) {
-        console.error(e);
-        alert("エクスポートエラー: " + e);
-      }
-    }
+    // ── 鍵削除 ──
     async function deleteKey(name, encrypted = false) {
       if (!confirm("鍵 " + name + " を削除してよろしいですか？")) return;
       try {
