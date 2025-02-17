@@ -521,7 +521,16 @@
         exportPrivBtn.style.backgroundColor = "#ffcccc";
         exportPrivBtn.style.border = "2px solid red";
         exportPrivBtn.style.fontWeight = "bold";
-        exportPrivBtn.onclick = () => exportKey(name, "private", true);
+        exportPrivBtn.onclick = () => {
+          if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。漏洩するとシステム全体の安全性に影響します。\n本当にエクスポートしますか？")) {
+            // unencrypted があれば通常エクスポート、なければ encrypted から復号して出力
+            if(keyStore[name]) {
+              exportKey(name, "private", false);
+            } else {
+              exportKey(name, "private", true);
+            }
+          }
+        };
         tdOps.appendChild(document.createTextNode("　"));
         tdOps.appendChild(exportPrivBtn);
         const deleteBtn = document.createElement("button");
@@ -1253,7 +1262,7 @@
             const publicJwk = record.publicKeyJwk;
             const xml = convertPublicJwkToXml(publicJwk);
             const exportArea = document.getElementById("exportArea");
-            exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果 (暗号化済み)</h3>`;
+            exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果</h3>`;
             const textarea = document.createElement("textarea");
             textarea.rows = 10;
             textarea.value = xml;
@@ -1263,7 +1272,7 @@
             const downloadLink = document.createElement("a");
             downloadLink.href = url;
             downloadLink.download = name + ".pubkey";
-            downloadLink.textContent = "Download 公開鍵 (暗号化済み)";
+            downloadLink.textContent = "Download 公開鍵";
             exportArea.appendChild(document.createElement("br"));
             exportArea.appendChild(downloadLink);
           } catch (e) {
@@ -1308,7 +1317,7 @@
             const exportedJwk = await crypto.subtle.exportKey("jwk", privKey);
             const xml = convertPrivateJwkToXml(exportedJwk);
             const exportArea = document.getElementById("exportArea");
-            exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果 (復号済み)</h3>
+            exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
                                     <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いに十分ご注意ください。</p>`;
             const textarea = document.createElement("textarea");
             textarea.rows = 10;
@@ -1319,7 +1328,7 @@
             const downloadLink = document.createElement("a");
             downloadLink.href = url;
             downloadLink.download = name + ".pvtkey";
-            downloadLink.textContent = "Download 秘密鍵 (復号済み)";
+            downloadLink.textContent = "Download 秘密鍵";
             exportArea.appendChild(document.createElement("br"));
             exportArea.appendChild(downloadLink);
           } catch (e) {
