@@ -125,6 +125,7 @@
               <th>鍵名</th>
               <th>種別</th>
               <th>鍵情報</th>
+              <th>保護</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -139,14 +140,19 @@
   <section id="resetSection" class="warning-section">
     <h2>取り扱い注意！</h2>
     <p>
-      以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
+      以下の操作は、<strong>すべての鍵情報とユーザー情報を削除</strong>します。<br>
       この操作は元に戻せませんので、十分に注意してください。
     </p>
-    <button id="resetDBBtn" style="background-color: red; color: white;">鍵一覧初期化</button>
+    <button id="resetDBBtn" style="background-color: red; color: white;">初期化</button>
   </section>
 
   <script>
     // ── 定数定義 ──
+    const DB_NAME = "PubliCryptDB";
+    const KEYS_STORE = "keys";
+    const USER_STORE = "user";
+    const SKEYS_STORE = "skeys";
+
     const RSA_ALGORITHM = "RSA-OAEP";
     const RSA_HASH = "SHA-256";
     const RSA_MODULUS_LENGTH = 4096;
@@ -158,9 +164,9 @@
 
     // ── グローバル変数 ──
     let db;
-    // keyStore: IndexedDB "keys" からロードされる（未暗号化の鍵）
+    // keyStore: IndexedDB の KEYS_STORE からロードされる（未暗号化の鍵）
     const keyStore = {};
-    // encryptedKeyStore: IndexedDB "skeys" からロードされる（暗号化済みの鍵）
+    // encryptedKeyStore: IndexedDB の SKEYS_STORE からロードされる（暗号化済みの鍵）
     const encryptedKeyStore = {};
     // importedPrivateKeys は復号用に登録（DBや秘密鍵インポートで登録）
     const importedPrivateKeys = [];
@@ -248,20 +254,18 @@
 
     // ── IndexedDB 関連 ──
     function initDB() {
-      // バージョン2："keys"、WebAuthn用 "name"、暗号化鍵 "skeys" を作成
-      const request = indexedDB.open("PubliCryptDB", 2);
-      // onupgradeneeded 内で "name" ではなく "user" ストアを作成する
+      // バージョン2：DB名 DB_NAME、ストア名 KEYS_STORE, USER_STORE, SKEYS_STORE を使用
+      const request = indexedDB.open(DB_NAME, 2);
       request.onupgradeneeded = function(e) {
         db = e.target.result;
-        if (!db.objectStoreNames.contains("keys")) {
-          db.createObjectStore("keys", { keyPath: "name" });
+        if (!db.objectStoreNames.contains(KEYS_STORE)) {
+          db.createObjectStore(KEYS_STORE, { keyPath: "name" });
         }
-        if (!db.objectStoreNames.contains("user")) {
-          // key: ハッシュ化済み credential id、value: {id, name}
-          db.createObjectStore("user", { keyPath: "id" });
+        if (!db.objectStoreNames.contains(USER_STORE)) {
+          db.createObjectStore(USER_STORE, { keyPath: "id" });
         }
-        if (!db.objectStoreNames.contains("skeys")) {
-          db.createObjectStore("skeys", { keyPath: "name" });
+        if (!db.objectStoreNames.contains(SKEYS_STORE)) {
+          db.createObjectStore(SKEYS_STORE, { keyPath: "name" });
         }
       };
 
@@ -276,8 +280,8 @@
     }
     function storeKeyRecord(record) {
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction("keys", "readwrite");
-        const store = transaction.objectStore("keys");
+        const transaction = db.transaction(KEYS_STORE, "readwrite");
+        const store = transaction.objectStore(KEYS_STORE);
         const req = store.put(record);
         req.onsuccess = () => resolve();
         req.onerror = (e) => reject(e);
@@ -285,8 +289,8 @@
     }
     function deleteKeyRecord(name) {
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction("keys", "readwrite");
-        const store = transaction.objectStore("keys");
+        const transaction = db.transaction(KEYS_STORE, "readwrite");
+        const store = transaction.objectStore(KEYS_STORE);
         const req = store.delete(name);
         req.onsuccess = () => resolve();
         req.onerror = (e) => reject(e);
@@ -294,8 +298,8 @@
     }
     function getKeyRecord(name) {
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction("keys", "readonly");
-        const store = transaction.objectStore("keys");
+        const transaction = db.transaction(KEYS_STORE, "readonly");
+        const store = transaction.objectStore(KEYS_STORE);
         const req = store.get(name);
         req.onsuccess = () => resolve(req.result);
         req.onerror = (e) => reject(e);
@@ -313,8 +317,8 @@
       await storeKeyRecord(record);
     }
     async function loadKeysFromDB() {
-      const transaction = db.transaction("keys", "readonly");
-      const store = transaction.objectStore("keys");
+      const transaction = db.transaction(KEYS_STORE, "readonly");
+      const store = transaction.objectStore(KEYS_STORE);
       const req = store.getAll();
       req.onsuccess = async function() {
         const records = req.result;
@@ -371,8 +375,8 @@
       }
     }
     function loadEncryptedKeysFromDB() {
-      const transaction = db.transaction("skeys", "readonly");
-      const store = transaction.objectStore("skeys");
+      const transaction = db.transaction(SKEYS_STORE, "readonly");
+      const store = transaction.objectStore(SKEYS_STORE);
       const req = store.getAll();
       req.onsuccess = function() {
         const records = req.result;
@@ -405,9 +409,9 @@
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
         const credId = await hashCredentialId(credential.rawId);
-        // 登録時
-        const tx = db.transaction("user", "readwrite");
-        const store = tx.objectStore("user");
+        // 登録時は USER_STORE を使用
+        const tx = db.transaction(USER_STORE, "readwrite");
+        const store = tx.objectStore(USER_STORE);
         store.put({ id: credId, name: name });
         tx.oncomplete = () => {
           alert("登録完了");
@@ -425,9 +429,9 @@
       try {
         const credential = await navigator.credentials.get({ publicKey: publicKeyRequestOptions });
         const credId = await hashCredentialId(credential.rawId);
-        // ログイン時
-        const tx = db.transaction("user", "readonly");
-        const store = tx.objectStore("user");
+        // ログイン時は USER_STORE を使用
+        const tx = db.transaction(USER_STORE, "readonly");
+        const store = tx.objectStore(USER_STORE);
         const req = store.get(credId);
         req.onsuccess = function(e) {
           const record = e.target.result;
@@ -451,7 +455,7 @@
     function refreshKeyList() {
       const tbody = document.getElementById("keyTable").querySelector("tbody");
       tbody.innerHTML = "";
-      // 未暗号化の鍵（keys ストア）
+      // 未暗号化の鍵（keyStore）
       for (const name in keyStore) {
         const tr = document.createElement("tr");
         const tdName = document.createElement("td");
@@ -469,6 +473,10 @@
           tdKeyInfo.textContent = "N/A";
         }
         tr.appendChild(tdKeyInfo);
+        // 「保護」列（未暗号化の場合は "-"）
+        const tdProtected = document.createElement("td");
+        tdProtected.textContent = "-";
+        tr.appendChild(tdProtected);
         const tdOps = document.createElement("td");
         const exportPubBtn = document.createElement("button");
         exportPubBtn.textContent = "公開鍵エクスポート";
@@ -506,7 +514,7 @@
         tr.appendChild(tdOps);
         tbody.appendChild(tr);
       }
-      // 暗号化済みの鍵（skeys ストア）
+      // 暗号化済みの鍵（encryptedKeyStore）
       for (const name in encryptedKeyStore) {
         const record = encryptedKeyStore[name];
         const tr = document.createElement("tr");
@@ -517,7 +525,7 @@
         tdType.textContent = record.type;
         tr.appendChild(tdType);
         const tdKeyInfo = document.createElement("td");
-        // 暗号化済みでも、RSAの場合はbitLength、ECの場合はcurveを表示する
+        // 未暗号化と同様に、RSA: ビット長、EC: 曲線を表示
         let keyInfo = "";
         if (record.type === "RSA") {
           keyInfo = record.publicKeyJwk && record.publicKeyJwk.n 
@@ -530,20 +538,23 @@
         }
         tdKeyInfo.textContent = keyInfo;
         tr.appendChild(tdKeyInfo);
+        // 「保護」列（暗号化済みの場合は "保護" と表示）
+        const tdProtected = document.createElement("td");
+        tdProtected.textContent = "保護";
+        tr.appendChild(tdProtected);
         const tdOps = document.createElement("td");
-        // 公開鍵エクスポートボタンは常に表示
+        // 公開鍵エクスポートは常に表示
         const exportPubBtn = document.createElement("button");
         exportPubBtn.textContent = "公開鍵エクスポート";
         exportPubBtn.onclick = () => exportKey(name, "public", true);
         tdOps.appendChild(exportPubBtn);
-        // 「秘密鍵エクスポート」ボタンは、ログインしている場合のみ表示
+        // 秘密鍵エクスポートは、ログインしている場合のみ表示
         if (currentUser) {
           const exportPrivBtn = document.createElement("button");
           exportPrivBtn.textContent = "秘密鍵エクスポート";
           exportPrivBtn.style.backgroundColor = "#ffcccc";
           exportPrivBtn.style.border = "2px solid red";
           exportPrivBtn.style.fontWeight = "bold";
-          exportPrivBtn.onclick = () => exportKey(name, "private", true);
           exportPrivBtn.onclick = () => {
             if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。漏洩するとシステム全体の安全性に影響します。\n本当にエクスポートしますか？")) {
               exportKey(name, "private", true);
@@ -613,8 +624,8 @@
       }
       
       // すべての準備完了後、トランザクション開始
-      const tx = db.transaction("skeys", "readwrite");
-      const store = tx.objectStore("skeys");
+      const tx = db.transaction(SKEYS_STORE, "readwrite");
+      const store = tx.objectStore(SKEYS_STORE);
       const record = {
         name: keyName,
         type: keyRecord.type,
@@ -631,7 +642,7 @@
       tx.oncomplete = async () => {
         await deleteKeyRecord(keyName);
         delete keyStore[keyName];
-        // ここで importedPrivateKeys からも削除
+        // importedPrivateKeys からも削除
         const idx = importedPrivateKeys.findIndex(item => item.name === keyName);
         if (idx >= 0) {
           importedPrivateKeys.splice(idx, 1);
@@ -1089,7 +1100,7 @@
         }
         // unencrypted鍵が見つからない場合、encryptedKeyStore から試す
         if (!found) {
-          // RSA type (type:0)
+          // RSA type
           for (let entry of headerEntries.filter(e => e.type === 0)) {
             for (let recName in encryptedKeyStore) {
               const rec = encryptedKeyStore[recName];
@@ -1130,7 +1141,7 @@
             }
             if(found) break;
           }
-          // EC type (type:1)
+          // EC type
           if (!found) {
             for (let entry of headerEntries.filter(e => e.type === 1)) {
               for (let recName in encryptedKeyStore) {
@@ -1334,7 +1345,7 @@
             const xml = convertPrivateJwkToXml(exportedJwk);
             const exportArea = document.getElementById("exportArea");
             exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
-                                    <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いに十分ご注意ください。</p>`;
+                                    <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
             const textarea = document.createElement("textarea");
             textarea.rows = 10;
             textarea.value = xml;
@@ -1458,8 +1469,8 @@
           await deleteKeyRecord(name);
           delete keyStore[name];
         } else {
-          const tx = db.transaction("skeys", "readwrite");
-          const store = tx.objectStore("skeys");
+          const tx = db.transaction(SKEYS_STORE, "readwrite");
+          const store = tx.objectStore(SKEYS_STORE);
           store.delete(name);
           delete encryptedKeyStore[name];
         }
@@ -1473,7 +1484,7 @@
     document.getElementById("resetDBBtn").addEventListener("click", function resetDatabase() {
       if (!confirm("本当に全ての鍵情報とユーザー情報を削除しますか？ この操作は元に戻せません。")) return;
       if (db) { db.close(); }
-      const req = indexedDB.deleteDatabase("PubliCryptDB");
+      const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = function() {
         alert("鍵情報とユーザー情報が初期化されました。");
         for (let key in keyStore) { delete keyStore[key]; }
