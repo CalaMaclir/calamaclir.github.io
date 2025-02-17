@@ -540,6 +540,11 @@
           exportPrivBtn.style.border = "2px solid red";
           exportPrivBtn.style.fontWeight = "bold";
           exportPrivBtn.onclick = () => exportKey(name, "private", true);
+          exportPrivBtn.onclick = () => {
+            if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。漏洩するとシステム全体の安全性に影響します。\n本当にエクスポートしますか？")) {
+              exportKey(name, "private", true);
+            }
+          };
           tdOps.appendChild(document.createTextNode("　"));
           tdOps.appendChild(exportPrivBtn);
         }
