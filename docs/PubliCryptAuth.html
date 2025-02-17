@@ -255,9 +255,9 @@
         if (!db.objectStoreNames.contains("keys")) {
           db.createObjectStore("keys", { keyPath: "name" });
         }
-        if (!db.objectStoreNames.contains("name")) {
+        if (!db.objectStoreNames.contains("user")) {
           // key: ハッシュ化済み credential id、value: {id, name}
-          db.createObjectStore("name", { keyPath: "id" });
+          db.createObjectStore("user", { keyPath: "id" });
         }
         if (!db.objectStoreNames.contains("skeys")) {
           db.createObjectStore("skeys", { keyPath: "name" });
@@ -403,8 +403,8 @@
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
         const credId = await hashCredentialId(credential.rawId);
-        const tx = db.transaction("name", "readwrite");
-        const store = tx.objectStore("name");
+        const tx = db.transaction("user", "readwrite");
+        const store = tx.objectStore("user");
         store.put({ id: credId, name: name });
         tx.oncomplete = () => {
           alert("登録完了");
@@ -422,8 +422,8 @@
       try {
         const credential = await navigator.credentials.get({ publicKey: publicKeyRequestOptions });
         const credId = await hashCredentialId(credential.rawId);
-        const tx = db.transaction("name", "readonly");
-        const store = tx.objectStore("name");
+        const tx = db.transaction("user", "readonly");
+        const store = tx.objectStore("user");
         const req = store.get(credId);
         req.onsuccess = function(e) {
           const record = e.target.result;
@@ -1467,11 +1467,11 @@
       }
     }
     document.getElementById("resetDBBtn").addEventListener("click", function resetDatabase() {
-      if (!confirm("本当に全ての鍵情報を削除しますか？ この操作は元に戻せません。")) return;
+      if (!confirm("本当に全ての鍵情報とユーザー情報を削除しますか？ この操作は元に戻せません。")) return;
       if (db) { db.close(); }
       const req = indexedDB.deleteDatabase("PubliCryptDB");
       req.onsuccess = function() {
-        alert("鍵一覧が初期化されました。");
+        alert("鍵情報とユーザー情報が初期化されました。");
         for (let key in keyStore) { delete keyStore[key]; }
         for (let key in encryptedKeyStore) { delete encryptedKeyStore[key]; }
         importedPrivateKeys.length = 0;
@@ -1481,7 +1481,7 @@
         initDB();
       };
       req.onerror = function(e) {
-        alert("鍵一覧初期化中にエラーが発生しました。");
+        alert("初期化中にエラーが発生しました。");
       };
       req.onblocked = function(e) {
         alert("他のタブで開いている可能性があります。");
