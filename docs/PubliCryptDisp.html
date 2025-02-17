@@ -103,7 +103,7 @@
     
     // ── IndexedDB 関連 ──
     function initDB() {
-      const request = indexedDB.open("PubliCryptDB", 1);
+      const request = indexedDB.open("PubliCryptDB", 2);
       request.onupgradeneeded = function(e) {
         db = e.target.result;
         if (!db.objectStoreNames.contains("keys")) {
