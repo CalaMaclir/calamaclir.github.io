@@ -250,6 +250,7 @@
     function initDB() {
       // バージョン2："keys"、WebAuthn用 "name"、暗号化鍵 "skeys" を作成
       const request = indexedDB.open("PubliCryptDB", 2);
+      // onupgradeneeded 内で "name" ではなく "user" ストアを作成する
       request.onupgradeneeded = function(e) {
         db = e.target.result;
         if (!db.objectStoreNames.contains("keys")) {
@@ -263,6 +264,7 @@
           db.createObjectStore("skeys", { keyPath: "name" });
         }
       };
+
       request.onsuccess = function(e) {
         db = e.target.result;
         loadKeysFromDB();
@@ -403,6 +405,7 @@
       try {
         const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
         const credId = await hashCredentialId(credential.rawId);
+        // 登録時
         const tx = db.transaction("user", "readwrite");
         const store = tx.objectStore("user");
         store.put({ id: credId, name: name });
@@ -422,6 +425,7 @@
       try {
         const credential = await navigator.credentials.get({ publicKey: publicKeyRequestOptions });
         const credId = await hashCredentialId(credential.rawId);
+        // ログイン時
         const tx = db.transaction("user", "readonly");
         const store = tx.objectStore("user");
         const req = store.get(credId);
