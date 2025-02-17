@@ -461,7 +461,7 @@
         const tdOps = document.createElement("td");
         const exportPubBtn = document.createElement("button");
         exportPubBtn.textContent = "公開鍵エクスポート";
-        exportPubBtn.onclick = () => exportKey(name, "public");
+        exportPubBtn.onclick = () => exportKey(name, "public", false);
         tdOps.appendChild(exportPubBtn);
         const exportPrivBtn = document.createElement("button");
         exportPrivBtn.textContent = "秘密鍵エクスポート";
@@ -515,6 +515,15 @@
         exportPubBtn.textContent = "公開鍵エクスポート";
         exportPubBtn.onclick = () => exportKey(name, "public", true);
         tdOps.appendChild(exportPubBtn);
+        // ここで秘密鍵エクスポートボタンも追加
+        const exportPrivBtn = document.createElement("button");
+        exportPrivBtn.textContent = "秘密鍵エクスポート";
+        exportPrivBtn.style.backgroundColor = "#ffcccc";
+        exportPrivBtn.style.border = "2px solid red";
+        exportPrivBtn.style.fontWeight = "bold";
+        exportPrivBtn.onclick = () => exportKey(name, "private", true);
+        tdOps.appendChild(document.createTextNode("　"));
+        tdOps.appendChild(exportPrivBtn);
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name, true);
@@ -594,6 +603,11 @@
       tx.oncomplete = async () => {
         await deleteKeyRecord(keyName);
         delete keyStore[keyName];
+        // ここで importedPrivateKeys からも削除
+        const idx = importedPrivateKeys.findIndex(item => item.name === keyName);
+        if (idx >= 0) {
+          importedPrivateKeys.splice(idx, 1);
+        }
         alert("鍵 " + keyName + " の暗号化が完了しました。");
         loadEncryptedKeysFromDB();
       };
@@ -1002,7 +1016,7 @@
         const payloadEnc = fileBuffer.slice(offset);
         let aesKeyRaw;
         let found = false;
-        // まずは unencrypted な鍵で試す
+        // まずは unencrypted な鍵（importedPrivateKeys）で試す
         for (let entry of headerEntries) {
           if (entry.type === 0) {
             for (let priv of importedPrivateKeys.filter(k => k.type === "RSA")) {
@@ -1018,26 +1032,25 @@
             const entryIdBase64 = arrayBufferToBase64(entry.recipientId);
             for (let priv of importedPrivateKeys.filter(k => k.type === "EC")) {
               if (priv.identifier === entryIdBase64) {
-                const ephemeralPubKey = await crypto.subtle.importKey(
-                  "raw", entry.ephemeralPub,
-                  { name: EC_ALGORITHM, namedCurve: keyStore[priv.name].curve },
-                  true, []
-                );
-                const wrappingKey = await crypto.subtle.deriveKey(
-                  { name: EC_ALGORITHM, public: ephemeralPubKey },
-                  priv.cryptoKey,
-                  { name: AES_ALGORITHM, length: 256 },
-                  false, ["decrypt"]
-                );
-                const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
-                const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
                 try {
-                  const decrypted = await crypto.subtle.decrypt(
+                  const ephemeralPubKey = await crypto.subtle.importKey(
+                    "raw", entry.ephemeralPub,
+                    { name: EC_ALGORITHM, namedCurve: keyStore[priv.name]?.curve },
+                    true, []
+                  );
+                  const wrappingKey = await crypto.subtle.deriveKey(
+                    { name: EC_ALGORITHM, public: ephemeralPubKey },
+                    priv.cryptoKey,
+                    { name: AES_ALGORITHM, length: 256 },
+                    false, ["decrypt"]
+                  );
+                  const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
+                  const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
+                  aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt(
                     { name: AES_ALGORITHM, iv: wrappingIV },
                     wrappingKey,
                     wrappingCiphertext
-                  );
-                  aesKeyRaw = new Uint8Array(decrypted);
+                  ));
                   found = true;
                   break;
                 } catch (err) { }
@@ -1048,11 +1061,54 @@
         }
         // unencrypted鍵が見つからない場合、encryptedKeyStore から試す
         if (!found) {
-          for (let entry of headerEntries) {
-            if (entry.type === 0) {
+          // RSA type (type:0)
+          for (let entry of headerEntries.filter(e => e.type === 0)) {
+            for (let recName in encryptedKeyStore) {
+              const rec = encryptedKeyStore[recName];
+              if (rec.identifier === entry.identifier) {
+                try {
+                  const salt = new Uint8Array(rec.encryptedPrivateKey.salt);
+                  const ivForPriv = new Uint8Array(rec.encryptedPrivateKey.iv);
+                  const ciphertext = new Uint8Array(rec.encryptedPrivateKey.ciphertext);
+                  const baseKeyMaterial = await window.crypto.subtle.importKey(
+                    "raw", new TextEncoder().encode(currentUser.id),
+                    "PBKDF2", false, ["deriveKey"]
+                  );
+                  const symmetricKey = await window.crypto.subtle.deriveKey(
+                    { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                    baseKeyMaterial,
+                    { name: AES_ALGORITHM, length: 256 },
+                    true,
+                    ["decrypt"]
+                  );
+                  const decryptedBuffer = await crypto.subtle.decrypt(
+                    { name: AES_ALGORITHM, iv: ivForPriv },
+                    symmetricKey,
+                    ciphertext
+                  );
+                  const privateJwkStr = new TextDecoder().decode(decryptedBuffer);
+                  const privateJwk = JSON.parse(privateJwkStr);
+                  const privKey = await crypto.subtle.importKey(
+                    "jwk", privateJwk,
+                    rec.type === "RSA" ? { name: RSA_ALGORITHM, hash: RSA_HASH } : { name: EC_ALGORITHM, namedCurve: rec.curve },
+                    true,
+                    rec.type === "RSA" ? ["decrypt"] : ["deriveKey"]
+                  );
+                  aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: RSA_ALGORITHM }, privKey, entry.encryptedKey));
+                  found = true;
+                  break;
+                } catch (err) { }
+              }
+            }
+            if(found) break;
+          }
+          // EC type (type:1)
+          if (!found) {
+            for (let entry of headerEntries.filter(e => e.type === 1)) {
               for (let recName in encryptedKeyStore) {
                 const rec = encryptedKeyStore[recName];
-                if (rec.identifier === entry.identifier) {
+                // 比較は、保存時に設定した identifier と、entry.recipientId の base64 化で判定
+                if (rec.identifier === arrayBufferToBase64(entry.recipientId)) {
                   try {
                     const salt = new Uint8Array(rec.encryptedPrivateKey.salt);
                     const ivForPriv = new Uint8Array(rec.encryptedPrivateKey.iv);
@@ -1081,14 +1137,32 @@
                       true,
                       rec.type === "RSA" ? ["decrypt"] : ["deriveKey"]
                     );
-                    aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: RSA_ALGORITHM }, privKey, entry.encryptedKey));
+                    // ECの場合、ファイル暗号化時は ephemeral 鍵を使って AES鍵を暗号化している
+                    const ephemeralPubKey = await crypto.subtle.importKey(
+                      "raw", entry.ephemeralPub,
+                      { name: EC_ALGORITHM, namedCurve: rec.curve },
+                      true, []
+                    );
+                    const wrappingKey = await crypto.subtle.deriveKey(
+                      { name: EC_ALGORITHM, public: ephemeralPubKey },
+                      privKey,
+                      { name: AES_ALGORITHM, length: 256 },
+                      false, ["decrypt"]
+                    );
+                    const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
+                    const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
+                    aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt(
+                      { name: AES_ALGORITHM, iv: wrappingIV },
+                      wrappingKey,
+                      wrappingCiphertext
+                    ));
                     found = true;
                     break;
-                  } catch (err) { }
+                  } catch(err) { }
                 }
               }
+              if(found) break;
             }
-            if (found) break;
           }
         }
         if (!found || !aesKeyRaw) {
@@ -1125,7 +1199,7 @@
 
     // ── 鍵エクスポート ──
     // type: "public" または "private"
-    // encrypted: true の場合、encryptedKeyStore から復号してエクスポート（または公開鍵も対応）
+    // encrypted: true の場合、encryptedKeyStore から復号してエクスポート（公開鍵も対応）
     async function exportKey(name, type, encrypted = false) {
       const enc = new TextEncoder();
       const dec = new TextDecoder();
@@ -1396,6 +1470,30 @@
     // ── イベントリスナー（登録／ログイン） ──
     document.getElementById("registerBtn").addEventListener("click", registerUser);
     document.getElementById("loginBtn").addEventListener("click", loginUser);
+
+    // ── 暗号化／復号ボタンのイベントリスナー追加 ──
+    document.getElementById('encryptBtn').addEventListener('click', async () => {
+      if (filesToProcess.length === 0) {
+        alert("暗号化するファイルがありません。");
+        return;
+      }
+      showSpinner();
+      for (let file of filesToProcess) {
+        await encryptFile(file);
+      }
+      resetUI();
+    });
+    document.getElementById('decryptBtn').addEventListener('click', async () => {
+      if (filesToProcess.length === 0) {
+        alert("復号するファイルがありません。");
+        return;
+      }
+      showSpinner();
+      for (let file of filesToProcess) {
+        await decryptFile(file);
+      }
+      resetUI();
+    });
 
     window.addEventListener("load", () => {
       initDB();
