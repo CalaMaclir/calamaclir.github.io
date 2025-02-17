@@ -233,7 +233,7 @@
       const binaryString = atob(modulusBase64);
       return binaryString.length * 8;
     }
-    // SHA-256 ハッシュ化（credential.rawId 等に使用）  ← 修正済み：saltとして "PubliCrypt" を使用
+    // SHA-256 ハッシュ化（credential.rawId 等に使用）
     async function hashCredentialId(rawId) {
       const enc = new TextEncoder();
       const saltStr = "PubliCrypt";
@@ -477,7 +477,6 @@
         exportPrivBtn.style.fontWeight = "bold";
         exportPrivBtn.onclick = () => {
           if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。漏洩するとシステム全体の安全性に影響します。\n本当にエクスポートしますか？")) {
-            // unencrypted があれば通常エクスポート、なければ encrypted から復号して出力
             if(keyStore[name]) {
               exportKey(name, "private", false);
             } else {
@@ -514,32 +513,36 @@
         tdType.textContent = record.type;
         tr.appendChild(tdType);
         const tdKeyInfo = document.createElement("td");
-        tdKeyInfo.textContent = "暗号化済み";
+        // 暗号化済みでも、RSAの場合はbitLength、ECの場合はcurveを表示する
+        let keyInfo = "";
+        if (record.type === "RSA") {
+          keyInfo = record.publicKeyJwk && record.publicKeyJwk.n 
+            ? getRsaBitLengthFromXmlModulus(base64UrlToBase64(record.publicKeyJwk.n)) + " bit" 
+            : "N/A";
+        } else if (record.type === "EC") {
+          keyInfo = record.curve ? record.curve : "N/A";
+        } else {
+          keyInfo = "N/A";
+        }
+        tdKeyInfo.textContent = keyInfo;
         tr.appendChild(tdKeyInfo);
         const tdOps = document.createElement("td");
-        // 公開鍵エクスポート（encrypted でも通常通り出力）
+        // 公開鍵エクスポートボタンは常に表示
         const exportPubBtn = document.createElement("button");
         exportPubBtn.textContent = "公開鍵エクスポート";
         exportPubBtn.onclick = () => exportKey(name, "public", true);
         tdOps.appendChild(exportPubBtn);
-        // ここで秘密鍵エクスポートボタンも追加
-        const exportPrivBtn = document.createElement("button");
-        exportPrivBtn.textContent = "秘密鍵エクスポート";
-        exportPrivBtn.style.backgroundColor = "#ffcccc";
-        exportPrivBtn.style.border = "2px solid red";
-        exportPrivBtn.style.fontWeight = "bold";
-        exportPrivBtn.onclick = () => {
-          if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。漏洩するとシステム全体の安全性に影響します。\n本当にエクスポートしますか？")) {
-            // unencrypted があれば通常エクスポート、なければ encrypted から復号して出力
-            if(keyStore[name]) {
-              exportKey(name, "private", false);
-            } else {
-              exportKey(name, "private", true);
-            }
-          }
-        };
-        tdOps.appendChild(document.createTextNode("　"));
-        tdOps.appendChild(exportPrivBtn);
+        // 「秘密鍵エクスポート」ボタンは、ログインしている場合のみ表示
+        if (currentUser) {
+          const exportPrivBtn = document.createElement("button");
+          exportPrivBtn.textContent = "秘密鍵エクスポート";
+          exportPrivBtn.style.backgroundColor = "#ffcccc";
+          exportPrivBtn.style.border = "2px solid red";
+          exportPrivBtn.style.fontWeight = "bold";
+          exportPrivBtn.onclick = () => exportKey(name, "private", true);
+          tdOps.appendChild(document.createTextNode("　"));
+          tdOps.appendChild(exportPrivBtn);
+        }
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "削除";
         deleteBtn.onclick = () => deleteKey(name, true);
@@ -1123,7 +1126,6 @@
             for (let entry of headerEntries.filter(e => e.type === 1)) {
               for (let recName in encryptedKeyStore) {
                 const rec = encryptedKeyStore[recName];
-                // 比較は、保存時に設定した identifier と、entry.recipientId の base64 化で判定
                 if (rec.identifier === arrayBufferToBase64(entry.recipientId)) {
                   try {
                     const salt = new Uint8Array(rec.encryptedPrivateKey.salt);
@@ -1153,7 +1155,6 @@
                       true,
                       rec.type === "RSA" ? ["decrypt"] : ["deriveKey"]
                     );
-                    // ECの場合、ファイル暗号化時は ephemeral 鍵を使って AES鍵を暗号化している
                     const ephemeralPubKey = await crypto.subtle.importKey(
                       "raw", entry.ephemeralPub,
                       { name: EC_ALGORITHM, namedCurve: rec.curve },
@@ -1262,7 +1263,6 @@
       } else {
         // 暗号化済みの場合
         if (type === "public") {
-          // 暗号化済みの公開鍵も encryptedKeyStore から取得して出力する
           const record = encryptedKeyStore[name];
           if (!record) { alert("暗号化済み鍵が存在しません"); return; }
           try {
