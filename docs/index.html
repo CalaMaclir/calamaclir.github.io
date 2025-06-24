@@ -223,9 +223,13 @@
       <div class="crypto-row">
         <div class="key-section">
           <h2>暗号化</h2>
-          <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
-          <h3>公開鍵選択 (.pubkey XML)</h3>
-          <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+		  <!-- ▼ここからまとめて囲む▼ -->
+		  <div id="pubkey-file-select-block">
+		    <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
+		    <h3>公開鍵選択 (.pubkey XML)</h3>
+		    <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+		  </div>
+		  <!-- ▲ここまで▲ -->
           <button id="encryptBtn">暗号化</button>
           <ul id="pubKeyList"></ul>
         </div>
