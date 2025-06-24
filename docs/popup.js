@@ -768,6 +768,7 @@ function resetDatabase() {
 document.getElementById('resetDBBtn').addEventListener('click', resetDatabase);
 
 // ── ページ起動時: #pubkey= で公開鍵を読み込む（追加分） ──
+// --- ページ起動時: #pubkey= で公開鍵を読み込む＆UI非表示処理 ---
 async function tryLoadPubkeyFromHash() {
   if (location.hash.startsWith("#pubkey=")) {
     try {
@@ -783,6 +784,18 @@ async function tryLoadPubkeyFromHash() {
       li.textContent = pubKey.name + " (" + pubKey.type + ")";
       document.getElementById('pubKeyList').appendChild(li);
       alert("URLから公開鍵を受信しました");
+      // --- ここでUI非表示処理 ---
+      // 暗号化欄の「公開鍵選択」説明・タイトル・input
+      const pubkeyDesc = Array.from(document.querySelectorAll('.key-section h3')).find(
+        el => el.textContent.includes('公開鍵選択')
+      );
+      if (pubkeyDesc) pubkeyDesc.style.display = "none";
+      const pubkeyInput = document.getElementById('pubKeyInput');
+      if (pubkeyInput) pubkeyInput.style.display = "none";
+      const pubkeyExplain = Array.from(document.querySelectorAll('.key-section div')).find(
+        el => el.textContent.includes('暗号化で使用する公開鍵のファイル')
+      );
+      if (pubkeyExplain) pubkeyExplain.style.display = "none";
     } catch (e) {
       alert("URL公開鍵の読み込みに失敗しました: " + e);
     }
