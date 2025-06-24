@@ -362,7 +362,6 @@ async function encryptFile(file) {
     seen.add(pub.identifier);
     uniquePublicKeys.push(pub);
   }
-  
   const entries = [];
   const encoder = new TextEncoder();
   // EC鍵を使って暗号化処理を実施
@@ -390,7 +389,7 @@ async function encryptFile(file) {
         const wrappingOutput = concatUint8Arrays([wrappingIV, wrappingCiphertext]);
         const recipientIdBytes = base64ToUint8Array(pub.identifier);
         entries.push({
-          type: 1, // 1 = EC
+          type: 1,
           recipientId: recipientIdBytes,
           ephemeralPub: ephemeralPubRaw,
           wrappingOutput: wrappingOutput
@@ -599,21 +598,41 @@ async function generateKeyPair(name, algType) {
     alert("選択されたアルゴリズムはサポートされていません。");
   }
 }
-// 鍵一覧の再表示：各鍵名と種別と鍵情報を表示
+
+// ── 公開鍵URL共有機能（追加分） ──
+async function exportPubkeyUrl(name) {
+  const keyPair = keyStore[name];
+  if (!keyPair || !keyPair.publicKey) {
+    alert("公開鍵が見つかりません");
+    return;
+  }
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const xml = convertPublicJwkToXml(jwk);
+  const utf8 = new TextEncoder().encode(xml);
+  const b64 = btoa(String.fromCharCode(...utf8));
+  const b64url = base64ToBase64Url(b64);
+  const url = `https://calamaclir.github.io/popup.html#pubkey=${b64url}`;
+  const exportArea = document.getElementById("exportArea");
+  exportArea.innerHTML = `<h3>${name} の 公開鍵URL</h3>
+    <input type="text" value="${url}" readonly style="width:98%"><br>
+    <button onclick="navigator.clipboard.writeText('${url}');this.textContent='コピーしました';">URLをコピー</button>
+    <p>このURLを相手に共有することで、ワンクリックで公開鍵を受け渡せます。</p>`;
+}
+
+// ── 鍵一覧の再表示：公開鍵URL共有ボタンを追加 ──
 function refreshKeyList() {
   const tbody = document.getElementById("keyTable").querySelector("tbody");
   tbody.innerHTML = "";
   for (const name in keyStore) {
     const tr = document.createElement("tr");
-    
     const tdName = document.createElement("td");
     tdName.textContent = name;
     tr.appendChild(tdName);
-    
+
     const tdType = document.createElement("td");
     tdType.textContent = keyStore[name].type;
     tr.appendChild(tdType);
-    
+
     const tdKeyInfo = document.createElement("td");
     if (keyStore[name].type === "EC") {
       tdKeyInfo.textContent = keyStore[name].curve ? keyStore[name].curve : "N/A";
@@ -621,38 +640,43 @@ function refreshKeyList() {
       tdKeyInfo.textContent = "N/A";
     }
     tr.appendChild(tdKeyInfo);
-    
+
     const tdOps = document.createElement("td");
-    
+
     const exportPubBtn = document.createElement("button");
     exportPubBtn.textContent = "公開鍵エクスポート";
     exportPubBtn.onclick = () => exportKey(name, "public");
-    
+
+    const exportPubUrlBtn = document.createElement("button");
+    exportPubUrlBtn.textContent = "公開鍵URL共有";
+    exportPubUrlBtn.onclick = () => exportPubkeyUrl(name);
+
     const exportPrivBtn = document.createElement("button");
     exportPrivBtn.textContent = "秘密鍵エクスポート";
-    exportPrivBtn.style.backgroundColor = "#ffcccc";
-    exportPrivBtn.style.border = "2px solid red";
-    exportPrivBtn.style.fontWeight = "bold";
+    exportPrivBtn.classList.add('export-privkey-btn');
     exportPrivBtn.onclick = () => {
       if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、暗号化されたデータが復号不能になったり、システム全体の安全性が損なわれる可能性があります。\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
         exportKey(name, "private");
       }
     };
-    
+
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "削除";
     deleteBtn.onclick = () => deleteKey(name);
-    
+
     tdOps.appendChild(exportPubBtn);
-    tdOps.appendChild(document.createTextNode("　"));
+    tdOps.appendChild(document.createTextNode(" "));
+    tdOps.appendChild(exportPubUrlBtn);
+    tdOps.appendChild(document.createTextNode(" "));
     tdOps.appendChild(exportPrivBtn);
-    tdOps.appendChild(document.createTextNode("　"));
+    tdOps.appendChild(document.createTextNode(" "));
     tdOps.appendChild(deleteBtn);
-    
     tr.appendChild(tdOps);
+
     tbody.appendChild(tr);
   }
 }
+
 // ── 鍵エクスポート（統合版）：鍵種に応じてXML形式に変換 ──
 function convertPublicJwkToXml(jwk) {
   if (jwk.kty === "EC") {
@@ -735,6 +759,7 @@ document.getElementById("generateKeyButton").addEventListener("click", async fun
   const algType = algSelect.value;
   await generateKeyPair(keyName, algType);
 });
+
 // ── IndexedDB初期化（リセット） ──
 function resetDatabase() {
   if (!confirm("本当に全ての鍵一覧を削除しますか？ この操作は元に戻せません。")) return;
@@ -758,6 +783,30 @@ function resetDatabase() {
 }
 document.getElementById('resetDBBtn').addEventListener('click', resetDatabase);
 
-window.addEventListener("load", () => {
-  initDB();
+// ── ページ起動時: #pubkey= で公開鍵を読み込む（追加分） ──
+async function tryLoadPubkeyFromHash() {
+  if (location.hash.startsWith("#pubkey=")) {
+    try {
+      const b64url = location.hash.slice(8);
+      const b64 = base64UrlToBase64(b64url);
+      const bin = atob(b64);
+      const uint8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; ++i) uint8[i] = bin.charCodeAt(i);
+      const xml = new TextDecoder().decode(uint8);
+      const pubKey = await importPublicKeyFromXmlUnified(xml, "URL受信公開鍵");
+      encryptionPublicKeys.push(pubKey);
+      const li = document.createElement('li');
+      li.textContent = pubKey.name + " (" + pubKey.type + ")";
+      document.getElementById('pubKeyList').appendChild(li);
+      alert("URLから公開鍵を受信しました");
+    } catch (e) {
+      alert("URL公開鍵の読み込みに失敗しました: " + e);
+    }
+  }
+}
+
+// --- ページロード時にDB初期化・URL公開鍵読込
+window.addEventListener("load", async () => {
+  await initDB();
+  await tryLoadPubkeyFromHash();
 });
