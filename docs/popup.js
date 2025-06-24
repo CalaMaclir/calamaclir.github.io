@@ -30,6 +30,10 @@ function resetUI() {
   document.getElementById('fileSelect').value = "";
   document.getElementById('privKeyList').innerHTML = "";
   hideSpinner();
+  // 公開鍵選択欄を「表示」に戻す
+  const pubkeyFileSelectBlock = document.getElementById('pubkey-file-select-block');
+  if (pubkeyFileSelectBlock) pubkeyFileSelectBlock.style.display = "";
+
 }
 
 // ── ユーティリティ関数 ──
