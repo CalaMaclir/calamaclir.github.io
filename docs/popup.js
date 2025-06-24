@@ -639,7 +639,7 @@ function refreshKeyList() {
     exportPrivBtn.textContent = "秘密鍵エクスポート";
     exportPrivBtn.classList.add('export-privkey-btn');
     exportPrivBtn.onclick = () => {
-      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると...")) {
+      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、暗号化されたデータが復号不能になったり、システム全体の安全性が損なわれる可能性があります。\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
         exportKey(name, "private");
       }
     };
