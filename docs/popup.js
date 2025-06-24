@@ -1,6 +1,5 @@
 // ── 定数定義 ──
 const EC_ALGORITHM = "ECDH";
-// デフォルトの楕円曲線を定数として定義（例："P-521"）
 const DEFAULT_EC_CURVE = "P-521";
 const AES_ALGORITHM = "AES-GCM";
 const AES_KEY_LENGTH = 256;
@@ -8,13 +7,9 @@ const AES_IV_LENGTH = 12;
 
 // ── グローバル変数 ──
 let db;
-// keyStore: 各鍵は { publicKey, privateKey, type, curve（ECの場合） }
 const keyStore = {};
-// importedPrivateKeys は復号用に登録（DBや秘密鍵インポートで登録）
 const importedPrivateKeys = [];
-// encryptionPublicKeys は「公開鍵選択 (.pubkey XML)」で読み込んだ公開鍵のみを暗号化用に登録
 const encryptionPublicKeys = [];
-// filesToProcess：ドラッグ＆ドロップ等で選択されたファイル
 const filesToProcess = [];
 
 // ── UI補助関数 ──
@@ -27,7 +22,6 @@ function hideSpinner() {
 function clearExportArea() {
   document.getElementById("exportArea").innerHTML = "";
 }
-// ★ 起動時と同じ状態に表示をリセットする関数 ★
 function resetUI() {
   filesToProcess.length = 0;
   document.getElementById('fileList').innerHTML = "";
@@ -54,17 +48,14 @@ function writeInt32LE(val) {
 function readInt32LE(view, offset) {
   return view.getInt32(offset, true);
 }
-// 標準 base64 → base64url（パディング除去）
 function base64ToBase64Url(b64) {
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-// base64url → 標準 base64（パディング追加）
 function base64UrlToBase64(url) {
   let b64 = url.replace(/-/g, '+').replace(/_/g, '/');
   while (b64.length % 4 !== 0) { b64 += '='; }
   return b64;
 }
-// ArrayBuffer ⇔ Base64（EC用識別子生成）
 function arrayBufferToBase64(buffer) {
   let binary = '';
   let bytes = (buffer instanceof Uint8Array) ? buffer : new Uint8Array(buffer);
@@ -173,7 +164,6 @@ function getXmlTagContent(xmlDoc, tagName) {
   const el = xmlDoc.getElementsByTagName(tagName)[0];
   return el ? el.textContent.trim() : null;
 }
-// EC形式の公開鍵インポート
 async function importPublicKeyFromXmlEC(xmlString, fileName) {
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlString, "application/xml");
@@ -193,7 +183,6 @@ async function importPublicKeyFromXmlEC(xmlString, fileName) {
   const identifier = arrayBufferToBase64(raw);
   return { name: fileName, identifier: identifier, cryptoKey: cryptoKey, type: "EC", curve: curve };
 }
-// EC形式の秘密鍵インポート
 async function importPrivateKeyFromXmlEC(xmlString, fileName) {
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlString, "application/xml");
@@ -220,7 +209,6 @@ async function importPrivateKeyFromXmlEC(xmlString, fileName) {
   const identifier = arrayBufferToBase64(raw);
   return { name: fileName, identifier: identifier, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "EC", curve: curve };
 }
-// 統合版：XMLから公開鍵インポート
 async function importPublicKeyFromXmlUnified(xmlString, fileName) {
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlString, "application/xml");
@@ -231,7 +219,6 @@ async function importPublicKeyFromXmlUnified(xmlString, fileName) {
     throw new Error("公開鍵XMLの形式が不明です");
   }
 }
-// 統合版：XMLから秘密鍵インポート
 async function importPrivateKeyFromXmlUnified(xmlString, fileName) {
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlString, "application/xml");
@@ -351,8 +338,6 @@ async function encryptFile(file) {
     alert("暗号化のために公開鍵がインポートされていません。");
     return;
   }
-
-  // ★ 重複する公開鍵を除外する処理 ★
   const uniquePublicKeys = [];
   const seen = new Set();
   for (let pub of encryptionPublicKeys) {
@@ -364,7 +349,6 @@ async function encryptFile(file) {
   }
   const entries = [];
   const encoder = new TextEncoder();
-  // EC鍵を使って暗号化処理を実施
   for (let pub of uniquePublicKeys) {
     if (pub.type === "EC") {
       try {
@@ -611,7 +595,7 @@ async function exportPubkeyUrl(name) {
   const utf8 = new TextEncoder().encode(xml);
   const b64 = btoa(String.fromCharCode(...utf8));
   const b64url = base64ToBase64Url(b64);
-  const url = `https://calamaclir.github.io/popup.html#pubkey=${b64url}`;
+  const url = `https://calamaclir.github.io/index.html#pubkey=${b64url}`;
   const exportArea = document.getElementById("exportArea");
   exportArea.innerHTML = `<h3>${name} の 公開鍵URL</h3>
     <input type="text" value="${url}" readonly style="width:98%"><br>
@@ -655,7 +639,7 @@ function refreshKeyList() {
     exportPrivBtn.textContent = "秘密鍵エクスポート";
     exportPrivBtn.classList.add('export-privkey-btn');
     exportPrivBtn.onclick = () => {
-      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、暗号化されたデータが復号不能になったり、システム全体の安全性が損なわれる可能性があります。\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
+      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると...")) {
         exportKey(name, "private");
       }
     };
