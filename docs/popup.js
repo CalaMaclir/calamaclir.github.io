@@ -11,6 +11,15 @@ const keyStore = {};
 const importedPrivateKeys = [];
 const encryptionPublicKeys = [];
 const filesToProcess = [];
+// UIブロックIDリスト（必要に応じて増減可）
+const HIDEABLE_UI_BLOCK_IDS = [
+  'pubkey-file-select-block',
+  'privKeyImport',
+  'keyManagement',
+  'exportArea',
+  'resetSection',
+  'decrypt-block'
+];
 
 // ── UI補助関数 ──
 function showSpinner() {
@@ -22,6 +31,7 @@ function hideSpinner() {
 function clearExportArea() {
   document.getElementById("exportArea").innerHTML = "";
 }
+// --- UI初期化時 ---
 function resetUI() {
   filesToProcess.length = 0;
   document.getElementById('fileList').innerHTML = "";
@@ -30,10 +40,9 @@ function resetUI() {
   document.getElementById('fileSelect').value = "";
   document.getElementById('privKeyList').innerHTML = "";
   hideSpinner();
-  // 公開鍵選択欄を「表示」に戻す
-  const pubkeyFileSelectBlock = document.getElementById('pubkey-file-select-block');
-  if (pubkeyFileSelectBlock) pubkeyFileSelectBlock.style.display = "";
 
+  // --- 非表示を「表示」に戻す ---
+  setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
 }
 
 // ── ユーティリティ関数 ──
@@ -772,6 +781,23 @@ function resetDatabase() {
 document.getElementById('resetDBBtn').addEventListener('click', resetDatabase);
 
 // ── ページ起動時: #pubkey= で公開鍵を読み込む（追加分） ──
+// 複数ブロックの表示/非表示切り替え用
+function setBlocksDisplay(ids, displayStyle) {
+  ids.forEach(id => {
+    // idかクラス名か判定（id優先）
+    let el = document.getElementById(id);
+    if (el) {
+      el.style.display = displayStyle;
+    } else {
+      // idがなければclassとして取得し全部切り替え
+      let classElems = document.getElementsByClassName(id);
+      for (let i = 0; i < classElems.length; i++) {
+        classElems[i].style.display = displayStyle;
+      }
+    }
+  });
+}
+
 // --- ページ起動時: #pubkey= で公開鍵を読み込む＆UI非表示処理 ---
 async function tryLoadPubkeyFromHash() {
   if (location.hash.startsWith("#pubkey=")) {
@@ -788,9 +814,10 @@ async function tryLoadPubkeyFromHash() {
       li.textContent = pubKey.name + " (" + pubKey.type + ")";
       document.getElementById('pubKeyList').appendChild(li);
       alert("URLから公開鍵を受信しました");
-      // ここで一括で消す
-      const pubkeyFileSelectBlock = document.getElementById('pubkey-file-select-block');
-      if (pubkeyFileSelectBlock) pubkeyFileSelectBlock.style.display = "none";
+
+      // --- まとめてUI非表示 ---
+      setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
+
     } catch (e) {
       alert("URL公開鍵の読み込みに失敗しました: " + e);
     }
@@ -802,3 +829,6 @@ window.addEventListener("load", async () => {
   await initDB();
   await tryLoadPubkeyFromHash();
 });
+
+// 末尾やwindow.load直後などでOK
+document.getElementById('resetUiBtn').addEventListener('click', resetUI);
