@@ -223,14 +223,15 @@
       <div class="crypto-row">
         <div class="key-section">
           <h2>暗号化</h2>
-          <div id="pubkey-file-select-block">
-            <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
-            <h3>公開鍵選択 (.pubkey XML)</h3>
-            <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
-          </div>
+		  <!-- ▼ここからまとめて囲む▼ -->
+		  <div id="pubkey-file-select-block">
+		    <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
+		    <h3>公開鍵選択 (.pubkey XML)</h3>
+		    <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+		  </div>
+		  <!-- ▲ここまで▲ -->
           <button id="encryptBtn">暗号化</button>
           <ul id="pubKeyList"></ul>
-          <div id="pubkey-sign-info" style="color: #3a3;"></div>
         </div>
         <div class="key-section">
           <h2>復号</h2>
@@ -254,6 +255,9 @@
         <div style="margin-bottom:10px;">
           <label for="keyNameInput">鍵名 (英数字、_, -, @, . のみ): </label>
           <input type="text" id="keyNameInput" placeholder="例: MyKey01">
+          <select id="keyAlgorithmSelect">
+            <option value="EC">楕円曲線 (ECDH)</option>
+          </select>
           <button id="generateKeyButton">鍵生成</button>
         </div>
         <div>
@@ -262,6 +266,7 @@
             <thead>
               <tr>
                 <th>鍵名</th>
+                <th>種別</th>
                 <th>鍵情報</th>
                 <th>操作</th>
               </tr>
@@ -272,6 +277,7 @@
       </div>
     </section>
 
+    <!-- exportAreaは.key-section外(mainの幅いっぱい) -->
     <div id="exportArea"></div>
     <section id="resetSection" class="warning-section">
       <h2>取り扱い注意！</h2>
