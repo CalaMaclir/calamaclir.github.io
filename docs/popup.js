@@ -14,6 +14,7 @@ const filesToProcess = [];
 // UIブロックIDリスト（必要に応じて増減可）
 const HIDEABLE_UI_BLOCK_IDS = [
   'pubkey-file-select-block',
+  'decrypt-block',
   'privKeyImport',
   'keyManagement',
   'exportArea',
