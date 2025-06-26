@@ -35,6 +35,7 @@ function clearExportArea() {
 // --- UI初期化時 ---
 function resetUI() {
   filesToProcess.length = 0;
+  encryptionPublicKeys.length = 0;
   document.getElementById('fileList').innerHTML = "";
   document.getElementById('fileDropArea').textContent = "ここにファイルをドロップ";
   document.getElementById('pubKeyList').innerHTML = "";
@@ -44,6 +45,16 @@ function resetUI() {
 
   // --- 非表示を「表示」に戻す ---
   setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
+}
+
+// --- UI初期化時 ---
+function resetUIEncrypt() {
+  filesToProcess.length = 0;
+  document.getElementById('fileList').innerHTML = "";
+  document.getElementById('fileDropArea').textContent = "ここにファイルをドロップ";
+  document.getElementById('fileSelect').value = "";
+  hideSpinner();
+
 }
 
 // ── ユーティリティ関数 ──
@@ -552,7 +563,8 @@ document.getElementById('encryptBtn').addEventListener('click', async () => {
   for (let file of filesToProcess) {
     await encryptFile(file);
   }
-  resetUI();
+  resetUIEncrypt();
+  hideSpinner();
 });
 document.getElementById('decryptBtn').addEventListener('click', async () => {
   if (filesToProcess.length === 0) {
@@ -706,28 +718,53 @@ async function exportKey(name, type) {
     }
     const exportArea = document.getElementById("exportArea");
     if (type === "private") {
-      exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート結果</h3>
+      exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート</h3>
                               <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
     } else {
-      exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート結果</h3>`;
+      exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート</h3>`;
     }
     const textarea = document.createElement("textarea");
     textarea.rows = 10;
     textarea.value = xml;
     exportArea.appendChild(textarea);
+
     const blob = new Blob([xml], { type: "application/xml" });
     const url = URL.createObjectURL(blob);
-    const downloadLink = document.createElement("a");
-    downloadLink.href = url;
-    downloadLink.download = name + (type === "public" ? ".pubkey" : ".pvtkey");
-    downloadLink.textContent = "Download " + (type === "public" ? "公開鍵" : "秘密鍵");
+
+    // --- ボタン化したダウンロードリンク ---
+    const downloadBtn = document.createElement("button");
+    downloadBtn.textContent = "ダウンロード" + (type === "public" ? "公開鍵" : "秘密鍵");
+    downloadBtn.style.marginTop = "8px";
+    // 色付け：公開鍵=青, 秘密鍵=赤
+    if (type === "private") {
+      downloadBtn.style.backgroundColor = "#e53935";
+      downloadBtn.style.color = "#fff";
+      downloadBtn.style.border = "none";
+    } else {
+      downloadBtn.style.backgroundColor = "#2979ff";
+      downloadBtn.style.color = "#fff";
+      downloadBtn.style.border = "none";
+    }
+    downloadBtn.style.padding = "8px 16px";
+    downloadBtn.style.borderRadius = "6px";
+    downloadBtn.style.fontWeight = "bold";
+    downloadBtn.onclick = function() {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name + (type === "public" ? ".pubkey" : ".pvtkey");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+
     exportArea.appendChild(document.createElement("br"));
-    exportArea.appendChild(downloadLink);
+    exportArea.appendChild(downloadBtn);
   } catch (e) {
     console.error(e);
     alert("エクスポートエラー: " + e);
   }
 }
+
 async function deleteKey(name) {
   if (!confirm("鍵 " + name + " を削除してよろしいですか？")) return;
   try {
