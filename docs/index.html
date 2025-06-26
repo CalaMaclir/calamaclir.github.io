@@ -233,10 +233,12 @@
           <button id="encryptBtn">暗号化</button>
           <ul id="pubKeyList"></ul>
         </div>
-        <div class="key-section">
-          <h2>復号</h2>
-          <div>秘密鍵は鍵一覧から自動選択されます</div>
-          <button id="decryptBtn">復号</button>
+        <div class="decrypt-block">
+	        <div class="key-section">
+	          <h2>復号</h2>
+	          <div>秘密鍵は鍵一覧から自動選択されます</div>
+	          <button id="decryptBtn">復号</button>
+	        </div>
         </div>
       </div>
     </section>
@@ -287,6 +289,8 @@
       </p>
       <button id="resetDBBtn">鍵一覧初期化</button>
     </section>
+	<!-- UI初期化用のボタン -->
+	<button id="resetUiBtn" style="background:#888;color:#fff;margin-top:24px;">はじめにもどす</button>
   </main>
   <script src="popup.js"></script>
 </body>
