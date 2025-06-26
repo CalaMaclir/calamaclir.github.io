@@ -552,6 +552,7 @@ document.getElementById('encryptBtn').addEventListener('click', async () => {
   for (let file of filesToProcess) {
     await encryptFile(file);
   }
+  resetUI();
 });
 document.getElementById('decryptBtn').addEventListener('click', async () => {
   if (filesToProcess.length === 0) {
