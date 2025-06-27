@@ -611,23 +611,47 @@ async function generateKeyPair(name, algType) {
 
 // ── 公開鍵URL共有機能（追加分） ──
 async function exportPubkeyUrl(name) {
-  const keyPair = keyStore[name];
-  if (!keyPair || !keyPair.publicKey) {
-    alert("公開鍵が見つかりません");
-    return;
-  }
-  const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-  const xml = convertPublicJwkToXml(jwk);
-  const utf8 = new TextEncoder().encode(xml);
-  const b64 = btoa(String.fromCharCode(...utf8));
-  const b64url = base64ToBase64Url(b64);
-  const url = `https://calamaclir.github.io/index.html#pubkey=${b64url}`;
-  const exportArea = document.getElementById("exportArea");
-  exportArea.innerHTML = `<h3>${name} の 公開鍵URL</h3>
-    <input type="text" value="${url}" readonly style="width:98%"><br>
-    <button onclick="navigator.clipboard.writeText('${url}');this.textContent='コピーしました';">URLをコピー</button>
-    <p>このURLを相手に共有することで、ワンクリックで公開鍵を受け渡せます。</p>`;
+    const keyPair = keyStore[name];
+    if (!keyPair || !keyPair.publicKey) {
+        alert("公開鍵が見つかりません");
+        return;
+    }
+    const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+    const xml = convertPublicJwkToXml(jwk);
+    const utf8 = new TextEncoder().encode(xml);
+    const b64 = btoa(String.fromCharCode(...utf8));
+    const b64url = base64ToBase64Url(b64);
+    const url = `https://calamaclir.github.io/index.html#pubkey=${b64url}`;
+
+    const exportArea = document.getElementById("exportArea");
+    exportArea.innerHTML = ""; // クリア
+
+    const h3 = document.createElement("h3");
+    h3.textContent = `${name} の 公開鍵URL`;
+    exportArea.appendChild(h3);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = url;
+    input.readOnly = true;
+    input.style.width = "98%";
+    exportArea.appendChild(input);
+
+    exportArea.appendChild(document.createElement("br"));
+
+    const button = document.createElement("button");
+    button.textContent = "URLをコピー";
+    button.addEventListener("click", () => {
+        navigator.clipboard.writeText(url);
+        button.textContent = "コピーしました";
+    });
+    exportArea.appendChild(button);
+
+    const p = document.createElement("p");
+    p.textContent = "このURLを相手に共有することで、ワンクリックで公開鍵を受け渡せます。";
+    exportArea.appendChild(p);
 }
+
 
 // ── 鍵一覧の再表示：公開鍵URL共有ボタンを追加 ──
 function refreshKeyList() {
