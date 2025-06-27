@@ -869,4 +869,10 @@ window.addEventListener("load", async () => {
 });
 
 // 末尾やwindow.load直後などでOK
-document.getElementById('resetUiBtn').addEventListener('click', resetUI);
+document.getElementById('resetUiBtn').addEventListener('click', async () => {
+  resetUI();
+});
+document.getElementById('reloadURLBtn').addEventListener('click', async () => {
+  resetUI();
+  await tryLoadPubkeyFromHash();
+});
