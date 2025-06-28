@@ -22,6 +22,16 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'decrypt-block'
 ];
 
+// ── Fingerprint生成関数追加 ──
+async function calcFingerprint(publicKey) {
+  const raw = await crypto.subtle.exportKey("raw", publicKey);
+  const hash = await crypto.subtle.digest("SHA-256", raw);
+  // base64url形式
+  let b64 = btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return b64;
+}
+
 // ── UI補助関数 ──
 function showSpinner() {
   document.getElementById('spinner').style.display = 'block';
@@ -166,6 +176,8 @@ async function loadKeysFromDB() {
         keyStore[record.name].publicKey = pubKey;
         keyStore[record.name].type = "EC";
         keyStore[record.name].curve = record.publicKeyJwk.crv;
+        // --- Fingerprint追加 ---
+        keyStore[record.name].fingerprint = await calcFingerprint(pubKey);
       }
       if (record.privateKeyJwk && record.type === "EC") {
         const privKey = await crypto.subtle.importKey(
@@ -206,7 +218,9 @@ async function importPublicKeyFromXmlEC(xmlString, fileName) {
   );
   const raw = await crypto.subtle.exportKey("raw", cryptoKey);
   const identifier = arrayBufferToBase64(raw);
-  return { name: fileName, identifier: identifier, cryptoKey: cryptoKey, type: "EC", curve: curve };
+  // --- Fingerprint追加 ---
+  const fingerprint = await calcFingerprint(cryptoKey);
+  return { name: fileName, identifier: identifier, cryptoKey: cryptoKey, type: "EC", curve: curve, fingerprint: fingerprint };
 }
 async function importPrivateKeyFromXmlEC(xmlString, fileName) {
   const parser = new DOMParser();
@@ -232,7 +246,9 @@ async function importPrivateKeyFromXmlEC(xmlString, fileName) {
   );
   const raw = await crypto.subtle.exportKey("raw", publicCryptoKey);
   const identifier = arrayBufferToBase64(raw);
-  return { name: fileName, identifier: identifier, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "EC", curve: curve };
+  // --- Fingerprint追加 ---
+  const fingerprint = await calcFingerprint(publicCryptoKey);
+  return { name: fileName, identifier: identifier, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "EC", curve: curve, fingerprint: fingerprint };
 }
 async function importPublicKeyFromXmlUnified(xmlString, fileName) {
   const parser = new DOMParser();
@@ -297,7 +313,9 @@ document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
       const pubKey = await importPublicKeyFromXmlUnified(text, file.name);
       encryptionPublicKeys.push(pubKey);
       const li = document.createElement('li');
-      li.textContent = pubKey.name + " (" + pubKey.type + ")";
+      li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
+      <span style="font-size:0.91em;color:#777;">FP: ${pubKey.fingerprint}</span>
+      <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
       pubKeyListElem.appendChild(li);
     } catch(err) {
       alert("公開鍵 " + file.name + " のインポートエラー: " + err.message);
@@ -327,7 +345,8 @@ document.getElementById('privKeyInput').addEventListener('change', async (e) => 
         publicKey: keyPair.publicKey, 
         privateKey: keyPair.privateKey, 
         type: keyPair.type,
-        curve: keyPair.curve
+        curve: keyPair.curve,
+        fingerprint: keyPair.fingerprint // --- Fingerprint追加 ---
       };
       importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
       const li = document.createElement('li');
@@ -586,11 +605,14 @@ async function generateKeyPair(name, algType) {
         { name: EC_ALGORITHM, namedCurve: DEFAULT_EC_CURVE },
         true, ["deriveKey", "deriveBits"]
       );
+      // --- Fingerprint追加 ---
+      const fingerprint = await calcFingerprint(keyPair.publicKey);
       keyStore[name] = { 
         publicKey: keyPair.publicKey, 
         privateKey: keyPair.privateKey, 
         type: "EC",
-        curve: DEFAULT_EC_CURVE
+        curve: DEFAULT_EC_CURVE,
+        fingerprint: fingerprint // 追加
       };
       const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
       const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
@@ -668,8 +690,13 @@ function refreshKeyList() {
     tr.appendChild(tdType);
 
     const tdKeyInfo = document.createElement("td");
+    // --- Fingerprint表示追加 ---
     if (keyStore[name].type === "EC") {
-      tdKeyInfo.textContent = keyStore[name].curve ? keyStore[name].curve : "N/A";
+      tdKeyInfo.innerHTML = `
+        Curve: ${keyStore[name].curve ? keyStore[name].curve : "N/A"}<br>
+        <span style="font-size:0.91em;color:#777;">FP: ${keyStore[name].fingerprint ? keyStore[name].fingerprint : "N/A"}</span>
+        <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${keyStore[name].fingerprint}')">Copy</button>
+      `;
     } else {
       tdKeyInfo.textContent = "N/A";
     }
@@ -873,11 +900,12 @@ async function tryLoadPubkeyFromHash() {
       const pubKey = await importPublicKeyFromXmlUnified(xml, "URL受信公開鍵");
       encryptionPublicKeys.push(pubKey);
       const li = document.createElement('li');
-      li.textContent = pubKey.name + " (" + pubKey.type + ")";
+      li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
+      <span style="font-size:0.91em;color:#777;">FP: ${pubKey.fingerprint}</span>
+      <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
       document.getElementById('pubKeyList').appendChild(li);
-      alert("URLから公開鍵を受信しました");
+      alert("URLから公開鍵を受信しました\nFingerprint: " + pubKey.fingerprint);
 
-      // --- まとめてUI非表示 ---
       setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
 
     } catch (e) {
@@ -885,6 +913,7 @@ async function tryLoadPubkeyFromHash() {
     }
   }
 }
+
 
 // --- ページロード時にDB初期化・URL公開鍵読込
 window.addEventListener("load", async () => {
