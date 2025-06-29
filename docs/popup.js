@@ -332,7 +332,7 @@ document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
       encryptionPublicKeys.push(pubKey);
       const li = document.createElement('li');
       li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
-      <span style="font-size:0.91em;color:#777;">FP: ${pubKey.fingerprint}</span>
+      <span style="font-size:0.91em;color:#777;">フィンガープリント: ${pubKey.fingerprint}</span>
       <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
       pubKeyListElem.appendChild(li);
     } catch(err) {
@@ -661,7 +661,10 @@ async function exportPubkeyUrl(name) {
     const utf8 = new TextEncoder().encode(xml);
     const b64 = btoa(String.fromCharCode(...utf8));
     const b64url = base64ToBase64Url(b64);
-    const url = `https://calamaclir.github.io/index.html#pubkey=${b64url}`;
+
+    // フィンガープリント
+    const fingerprint = keyPair.fingerprint;
+    const url = `https://calamaclir.github.io/index.html#pubkey=${b64url}&fp=${fingerprint}`;
 
     const exportArea = document.getElementById("exportArea");
     exportArea.innerHTML = ""; // クリア
@@ -681,7 +684,7 @@ async function exportPubkeyUrl(name) {
     exportArea.appendChild(document.createElement("br"));
 
     const button = document.createElement("button");
-    button.textContent = "URLをコピー";
+    button.textContent = "公開鍵のURLをコピー";
     button.addEventListener("click", () => {
         navigator.clipboard.writeText(url);
         button.textContent = "コピーしました";
@@ -713,7 +716,7 @@ function refreshKeyList() {
     if (keyStore[name].type === "EC") {
       tdKeyInfo.innerHTML = `
         Curve: ${keyStore[name].curve ? keyStore[name].curve : "N/A"}<br>
-        <span style="font-size:0.91em;color:#777;">FP: ${keyStore[name].fingerprint ? keyStore[name].fingerprint : "N/A"}</span>
+        <span style="font-size:0.91em;color:#777;">フィンガープリント: ${keyStore[name].fingerprint ? keyStore[name].fingerprint : "N/A"}</span>
         <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${keyStore[name].fingerprint}')">Copy</button>
       `;
     } else {
@@ -804,7 +807,7 @@ async function exportKey(name, type) {
 
     // --- ボタン化したダウンロードリンク ---
     const downloadBtn = document.createElement("button");
-    downloadBtn.textContent = "ダウンロード" + (type === "public" ? "公開鍵" : "秘密鍵");
+    downloadBtn.textContent = (type === "public" ? "公開鍵" : "秘密鍵（取り扱い注意！！）") + "をダウンロードする";
     downloadBtn.style.marginTop = "8px";
     // 色付け：公開鍵=青, 秘密鍵=赤
     if (type === "private") {
@@ -911,7 +914,13 @@ function setBlocksDisplay(ids, displayStyle) {
 async function tryLoadPubkeyFromHash() {
   if (location.hash.startsWith("#pubkey=")) {
     try {
-      const b64url = location.hash.slice(8);
+      // --- pubkey=とfp=のパース ---
+      let hash = location.hash.slice(1); // #除去
+      let params = new URLSearchParams(hash.replace(/&/g,'&')); // 疑似的に扱う
+      let b64url = params.get('pubkey');
+      let expectedFp = params.get('fp'); // 追加
+
+      if (!b64url) throw "公開鍵データが見つかりません";
       const b64 = base64UrlToBase64(b64url);
       const bin = atob(b64);
       const uint8 = new Uint8Array(bin.length);
@@ -919,20 +928,26 @@ async function tryLoadPubkeyFromHash() {
       const xml = new TextDecoder().decode(uint8);
       const pubKey = await importPublicKeyFromXmlUnified(xml, "URL受信公開鍵");
       encryptionPublicKeys.push(pubKey);
-      const li = document.createElement('li');
-      li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
-      <span style="font-size:0.91em;color:#777;">FP: ${pubKey.fingerprint}</span>
-      <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
-      document.getElementById('pubKeyList').appendChild(li);
-      alert("URLから公開鍵を受信しました\nFingerprint: " + pubKey.fingerprint);
 
-      setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
-
+      // --- フィンガープリント検証 ---
+      if (expectedFp && pubKey.fingerprint !== expectedFp) {
+        alert("[warning!] フィンガープリント不一致！公開鍵またはフィンガープリントが改ざんされている可能性があります。\n"
+            + `共有されたフィンガープリント: ${expectedFp}\n公開鍵から算出されたフィンガープリント: ${pubKey.fingerprint}`);
+      } else {
+        const li = document.createElement('li');
+        li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
+        <span style="font-size:0.91em;color:#777;">フィンガープリント: ${pubKey.fingerprint}</span>
+        <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
+        document.getElementById('pubKeyList').appendChild(li);
+        alert("URLから公開鍵を受信しました\nフィンガープリントは一致します\nフィンガープリント: " + pubKey.fingerprint);
+        setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
+      }
     } catch (e) {
       alert("URL公開鍵の読み込みに失敗しました: " + e);
     }
   }
 }
+
 
 
 // --- ページロード時にDB初期化・URL公開鍵読込
