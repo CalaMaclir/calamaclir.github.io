@@ -727,18 +727,18 @@ function refreshKeyList() {
     const tdOps = document.createElement("td");
 
     const exportPubBtn = document.createElement("button");
-    exportPubBtn.textContent = "公開鍵エクスポート";
+    exportPubBtn.textContent = "公開鍵をエクスポート";
     exportPubBtn.onclick = () => exportKey(name, "public");
 
     const exportPubUrlBtn = document.createElement("button");
-    exportPubUrlBtn.textContent = "公開鍵URL共有";
+    exportPubUrlBtn.textContent = "公開鍵をURLで共有";
     exportPubUrlBtn.onclick = () => exportPubkeyUrl(name);
 
     const exportPrivBtn = document.createElement("button");
-    exportPrivBtn.textContent = "秘密鍵エクスポート";
+    exportPrivBtn.textContent = "秘密鍵をエクスポート";
     exportPrivBtn.classList.add('export-privkey-btn');
     exportPrivBtn.onclick = () => {
-      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、暗号化されたデータが復号不能になったり、システム全体の安全性が損なわれる可能性があります。\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
+      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、他の人によって暗号化されたデータが復号される可能性があります\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
         exportKey(name, "private");
       }
     };
@@ -792,10 +792,10 @@ async function exportKey(name, type) {
     const exportArea = document.getElementById("exportArea");
     dispExportArea();
     if (type === "private") {
-      exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート</h3>
+      exportArea.innerHTML = `<h3>${name} の 秘密鍵をエクスポートする</h3>
                               <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
     } else {
-      exportArea.innerHTML = `<h3>${name} の 公開鍵 エクスポート</h3>`;
+      exportArea.innerHTML = `<h3>${name} の 公開鍵をエクスポートする</h3>`;
     }
     const textarea = document.createElement("textarea");
     textarea.rows = 10;
