@@ -40,8 +40,24 @@ function hideSpinner() {
   document.getElementById('spinner').style.display = 'none';
 }
 function clearExportArea() {
-  document.getElementById("exportArea").innerHTML = "";
+  document.getElementById('exportArea').innerHTML = "";
+  document.getElementById('exportArea').style.display = 'none';
 }
+
+function dispExportArea() {
+  document.getElementById('exportArea').style.display = '';
+}
+
+
+// chrome拡張機能のときはボタンを隠す
+function hideResetUiButtonsInExtension() {
+  if (typeof chrome !== "undefined" && typeof chrome.runtime !== "undefined") {
+    const UIinitArea = document.getElementById('UI-init');
+    if (UIinitArea) UIinitArea.style.display = "none";
+  }
+}
+
+
 // --- UI初期化時 ---
 function resetUI() {
   filesToProcess.length = 0;
@@ -52,6 +68,8 @@ function resetUI() {
   document.getElementById('fileSelect').value = "";
   document.getElementById('privKeyList').innerHTML = "";
   hideSpinner();
+  clearExportArea();
+
 
   // --- 非表示を「表示」に戻す ---
   setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
@@ -647,6 +665,7 @@ async function exportPubkeyUrl(name) {
 
     const exportArea = document.getElementById("exportArea");
     exportArea.innerHTML = ""; // クリア
+    dispExportArea();
 
     const h3 = document.createElement("h3");
     h3.textContent = `${name} の 公開鍵URL`;
@@ -768,6 +787,7 @@ async function exportKey(name, type) {
       xml = convertPrivateJwkToXml(jwk);
     }
     const exportArea = document.getElementById("exportArea");
+    dispExportArea();
     if (type === "private") {
       exportArea.innerHTML = `<h3>${name} の 秘密鍵 エクスポート</h3>
                               <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
@@ -929,3 +949,7 @@ document.getElementById('reloadURLBtn').addEventListener('click', async () => {
   resetUI();
   await tryLoadPubkeyFromHash();
 });
+
+// chrome拡張機能のときはボタンを隠す
+window.addEventListener("DOMContentLoaded", hideResetUiButtonsInExtension);
+
