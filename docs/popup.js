@@ -4,6 +4,12 @@ const DEFAULT_EC_CURVE = "P-521";
 const AES_ALGORITHM = "AES-GCM";
 const AES_KEY_LENGTH = 256;
 const AES_IV_LENGTH = 12;
+const PUBKEY_SHARE_BASE_URL = "https://calamaclir.github.io/index.html";
+// ── QRコード用定数 ──
+/** QRコードの誤り訂正レベル */
+const QR_CODE_CORRECT_LEVEL = QRCode.CorrectLevel.L;
+/** QRコードのサイズ（px） */
+const QR_CODE_SIZE = 256;
 
 // ── グローバル変数 ──
 let db;
@@ -656,33 +662,40 @@ async function exportPubkeyUrl(name) {
         alert("公開鍵が見つかりません");
         return;
     }
+
+    // JWK を XML に変換
     const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const xml = convertPublicJwkToXml(jwk);
+
+    // XML を UTF-8→Base64Url にエンコード
     const utf8 = new TextEncoder().encode(xml);
     const b64 = btoa(String.fromCharCode(...utf8));
     const b64url = base64ToBase64Url(b64);
 
     // フィンガープリント
     const fingerprint = keyPair.fingerprint;
-    const url = `https://calamaclir.github.io/index.html#pubkey=${b64url}&fp=${fingerprint}`;
+    const url = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
 
+    // 出力エリア初期化＆表示
     const exportArea = document.getElementById("exportArea");
     exportArea.innerHTML = ""; // クリア
     dispExportArea();
 
+    // 見出し
     const h3 = document.createElement("h3");
     h3.textContent = `${name} の 公開鍵URL`;
     exportArea.appendChild(h3);
 
+    // URL テキストボックス
     const input = document.createElement("input");
     input.type = "text";
     input.value = url;
     input.readOnly = true;
     input.style.width = "98%";
     exportArea.appendChild(input);
-
     exportArea.appendChild(document.createElement("br"));
 
+    // コピー用ボタン
     const button = document.createElement("button");
     button.textContent = "公開鍵のURLをコピー";
     button.addEventListener("click", () => {
@@ -691,9 +704,28 @@ async function exportPubkeyUrl(name) {
     });
     exportArea.appendChild(button);
 
+    // 説明文
     const p = document.createElement("p");
     p.textContent = "このURLを相手に共有することで、ワンクリックで公開鍵を受け渡せます。";
     exportArea.appendChild(p);
+
+    // ── QRコード用コンテナを exportArea 内に準備 ──
+    let qrContainer = exportArea.querySelector("#qrcode");
+    if (!qrContainer) {
+        qrContainer = document.createElement("div");
+        qrContainer.id = "qrcode";
+        qrContainer.style.marginTop = "16px";
+        exportArea.appendChild(qrContainer);
+    }
+    qrContainer.innerHTML = ""; // 前回の描画をクリア
+
+    // ── QRコード生成 ──
+    new QRCode(qrContainer, {
+        text: url,
+        width: QR_CODE_SIZE,
+        height: QR_CODE_SIZE,
+        correctLevel: QR_CODE_CORRECT_LEVEL
+    });
 }
 
 
@@ -931,7 +963,7 @@ async function tryLoadPubkeyFromHash() {
 
       // --- フィンガープリント検証 ---
       if (expectedFp && pubKey.fingerprint !== expectedFp) {
-        alert("[warning!] フィンガープリント不一致！公開鍵またはフィンガープリントが改ざんされている可能性があります。\n"
+        alert("[warning!] 公開鍵とフィンガープリントが一致しません！公開鍵またはフィンガープリントが改ざんされている可能性があります。\n"
             + `共有されたフィンガープリント: ${expectedFp}\n公開鍵から算出されたフィンガープリント: ${pubKey.fingerprint}`);
       } else {
         const li = document.createElement('li');
@@ -939,7 +971,7 @@ async function tryLoadPubkeyFromHash() {
         <span style="font-size:0.91em;color:#777;">フィンガープリント: ${pubKey.fingerprint}</span>
         <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
         document.getElementById('pubKeyList').appendChild(li);
-        alert("URLから公開鍵を受信しました\nフィンガープリントは一致します\nフィンガープリント: " + pubKey.fingerprint);
+        alert("URLから公開鍵を受信しました\n公開鍵とフィンガープリントは一致します(URLに改ざんはありません)\nフィンガープリント: " + pubKey.fingerprint);
         setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
       }
     } catch (e) {

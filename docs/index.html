@@ -334,7 +334,10 @@
     </section>
 
     <!-- exportAreaは.key-section外(mainの幅いっぱい) -->
-    <div id="exportArea"></div>
+    <div id="exportArea">
+    <!-- QRコード描画領域をあらかじめ配置（スタイルはお好みで） -->
+        <div id="qrcode" style="margin-top:16px;"></div>
+    </div>
     <section id="resetSection" class="warning-section">
       <h2>取り扱い注意！</h2>
       <p>
@@ -349,6 +352,7 @@
 		<button id="reloadURLBtn" style="background:#777;color:#fff;margin-top:24px;">URL公開鍵を読み直す</button>
     </div>
   </main>
+  <script src="qrcode.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
