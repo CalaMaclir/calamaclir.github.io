@@ -706,7 +706,7 @@ async function exportPubkeyUrl(name) {
 
     // 説明文
     const p = document.createElement("p");
-    p.textContent = "このURLを相手に共有することで、ワンクリックで公開鍵を受け渡せます。";
+    p.textContent = "公開鍵をURL/QRコードで共有できます";
     exportArea.appendChild(p);
 
     // ── QRコード用コンテナを exportArea 内に準備 ──
@@ -763,7 +763,7 @@ function refreshKeyList() {
     exportPubBtn.onclick = () => exportKey(name, "public");
 
     const exportPubUrlBtn = document.createElement("button");
-    exportPubUrlBtn.textContent = "公開鍵をURLで共有";
+    exportPubUrlBtn.textContent = "公開鍵をURL/QRコードで共有";
     exportPubUrlBtn.onclick = () => exportPubkeyUrl(name);
 
     const exportPrivBtn = document.createElement("button");
