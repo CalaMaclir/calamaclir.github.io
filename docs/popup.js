@@ -348,6 +348,51 @@ document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
   e.target.value = "";
 });
 
+// --- QRコード読み取り処理 ---
+document.getElementById('scanQrButton').addEventListener('click', async () => {
+  const video = document.getElementById('qrVideo');
+  const canvas = document.getElementById('qrCanvas');
+  const context = canvas.getContext('2d');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    video.srcObject = stream;
+    video.play();
+    video.style.display = 'block';
+
+    const scanLoop = setInterval(async () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, canvas.width, canvas.height);
+      if (code) {
+        clearInterval(scanLoop);
+        stream.getTracks().forEach(track => track.stop());
+        video.style.display = 'none';
+
+        // QRコードから得たURLを処理
+        try {
+          const tempUrl = new URL(code.data);
+          if (tempUrl.hash.startsWith("#pubkey=")) {
+            location.hash = tempUrl.hash;
+            await tryLoadPubkeyFromHash();
+//            alert("QRコードから公開鍵を読み取りました！");
+          } else {
+            alert("QRコードが公開鍵URLの形式ではありません。");
+          }
+        } catch (e) {
+          alert("QRコードの内容が無効なURLです。");
+        }
+      }
+    }, 500);
+  } catch (err) {
+    console.error("カメラ起動エラー", err);
+    alert("カメラの起動に失敗しました。");
+  }
+});
+
+
 // ── 秘密鍵ファイル入力（インポート＆DB保存、公開鍵自動生成） ──
 const privKeyListElem = document.getElementById('privKeyList');
 document.getElementById('privKeyInput').addEventListener('change', async (e) => {
