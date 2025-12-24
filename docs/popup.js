@@ -5,11 +5,399 @@ const AES_ALGORITHM = "AES-GCM";
 const AES_KEY_LENGTH = 256;
 const AES_IV_LENGTH = 12;
 const PUBKEY_SHARE_BASE_URL = "https://calamaclir.github.io/index.html";
+const HEADER_CHECK_SIZE = 1024 * 1024;
+
 // ── QRコード用定数 ──
-/** QRコードの誤り訂正レベル */
 const QR_CODE_CORRECT_LEVEL = QRCode.CorrectLevel.L;
-/** QRコードのサイズ（px） */
 const QR_CODE_SIZE = 256;
+
+// ── i18n リソース ──
+const resources = {
+  ja: {
+    app_desc: "公開鍵暗号化を利用したファイルの暗号化・復号Chrome拡張機能<br>鍵の管理と暗号化、復号の処理が手軽にできます<br>鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます",
+    link_manual: "簡単な説明はこちらをごらんください",
+    processing: "処理中...",
+    target_files_header: "暗号化／復号の対象ファイル",
+    drop_area_text: "ここにファイルをドロップ",
+    encrypt_title: "暗号化",
+    encrypt_instruction: "暗号化で使用する公開鍵のファイルを読み込んでください",
+    pubkey_select_header: "公開鍵選択 (.pubkey XML)",
+    encrypt_btn: "暗号化",
+    decrypt_title: "復号",
+    decrypt_instruction: "秘密鍵は鍵一覧から自動選択されます",
+    decrypt_btn: "復号",
+    privkey_import_header: "秘密鍵インポート (.pvtkey XML)",
+    key_mgmt_header: "鍵管理",
+    key_name_label: "鍵名 (英数字、_, -, @, . のみ): ",
+    key_name_placeholder: "例: MyKey01",
+    algo_ec: "楕円曲線 (ECDH)",
+    generate_btn: "鍵生成",
+    key_list_header: "鍵一覧",
+    col_keyname: "鍵名",
+    col_type: "種別",
+    col_info: "鍵情報",
+    col_operation: "操作",
+    warning_header: "取り扱い注意！",
+    warning_text: "以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>この操作は元に戻せませんので、十分に注意してください。",
+    reset_db_btn: "鍵一覧初期化",
+    reset_ui_btn: "画面を初期化する",
+    reload_url_btn: "URL公開鍵を読み直す",
+    // JS内メッセージ
+    fingerprint: "フィンガープリント",
+    copy: "Copy",
+    copied: "コピーしました",
+    export_pub: "公開鍵をエクスポート",
+    share_url: "公開鍵をURL/QRコードで共有",
+    export_priv: "秘密鍵をエクスポート",
+    delete: "削除",
+    checking: "確認中...",
+    ok_decryptable: "復号可能",
+    ng_nokey: "復号不可 (鍵が見つかりません)",
+    unknown_format: "形式不明",
+    confirm_priv_export: "【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、他の人によって暗号化されたデータが復号される可能性があります\n\n本当に秘密鍵をエクスポートしてもよろしいですか？",
+    confirm_delete: "鍵 {name} を削除してよろしいですか？",
+    confirm_reset_db: "本当に全ての鍵一覧を削除しますか？ この操作は元に戻せません。",
+    alert_deleted: "鍵 {name} を削除しました",
+    alert_reset_done: "鍵一覧が初期化されました。",
+    alert_reset_err: "鍵一覧の初期化中にエラーが発生しました。",
+    alert_blocked: "他のタブで開いている可能性があります。",
+    alert_no_file_enc: "暗号化するファイルがありません。",
+    alert_no_file_dec: "復号するファイルがありません。",
+    alert_done_result: "処理が完了しました。\n成功: {success}件\n失敗: {fail}件",
+    msg_enc_start: "暗号化処理を開始します...",
+    msg_enc_processing: "暗号化中: {name}",
+    msg_dec_start: "復号処理を開始します...",
+    msg_dec_processing: "復号中: {name}",
+    err_no_pubkey: "暗号化のために公開鍵がインポートされていません。",
+    err_no_valid_pub: "有効な公開鍵がありません。",
+    err_no_privkey: "復号のための秘密鍵が存在しません。",
+    err_invalid_file: "ファイルが不正です。",
+    err_unknown_entry: "不明な鍵エントリータイプです。",
+    err_dec_failed: "一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。",
+    err_aes_dec_fail: "AES復号に失敗しました: ",
+    err_dec_result_invalid: "復号結果が不正です。",
+    alert_ec_gen_done: "楕円曲線鍵ペア生成完了: {name}",
+    alert_ec_gen_err: "楕円曲線鍵生成エラー: ",
+    alert_unsupported_alg: "選択されたアルゴリズムはサポートされていません。",
+    alert_pub_not_found: "公開鍵が見つかりません",
+    alert_import_pub_err: "公開鍵 {name} のインポートエラー: ",
+    alert_priv_exists: "秘密鍵 {name} は既に存在するため、インポートをスキップします。",
+    alert_import_priv_done: "秘密鍵インポート完了",
+    alert_import_priv_err: "秘密鍵 {name} のインポートエラー: ",
+    alert_keyname_invalid: "鍵名が不正です。英数字、_, -, @, . のみ使用可能です。",
+    alert_keyname_exists: "同名の鍵が既に存在します",
+    alert_url_pub_mismatch: "[warning!] 公開鍵とフィンガープリントが一致しません！\n共有されたフィンガープリント: {expected}\n公開鍵から算出されたフィンガープリント: {actual}",
+    alert_url_pub_ok: "URLから公開鍵を受信しました\nフィンガープリント: {fp}",
+    alert_url_load_err: "URL公開鍵の読み込みに失敗しました: ",
+    
+    label_pub_url: "{name} の 公開鍵URL",
+    label_pub_url_desc: "公開鍵をURL/QRコードで共有できます",
+    btn_copy_url: "公開鍵のURLをコピー",
+    
+    header_export_priv: "{name} の 秘密鍵をエクスポートする",
+    header_export_pub: "{name} の 公開鍵をエクスポートする",
+    warn_priv_sensitive: "※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。",
+    btn_download_pub: "公開鍵をダウンロードする",
+    btn_download_priv: "秘密鍵（取り扱い注意！！）をダウンロードする",
+    
+    err_no_priv_exists: "秘密鍵が存在しません",
+    err_no_pub_exists: "公開鍵が存在しません",
+    err_export_fail: "エクスポートエラー: ",
+    
+    status_unknown: "データ不足",
+    status_unencrypted: "非暗号化/不明な形式",
+    status_unknown_type: "不明なエントリータイプ",
+    status_parse_err: "解析エラー"
+  },
+  en: {
+    app_desc: "File encryption/decryption Chrome extension using public key cryptography.<br>Manage keys and encrypt/decrypt files easily.<br>Keys are stored in IndexedDB within the browser, and all processing is done locally.",
+    link_manual: "Click here for a brief explanation (Japanese)",
+    processing: "Processing...",
+    target_files_header: "Files to Encrypt/Decrypt",
+    drop_area_text: "Drop files here",
+    encrypt_title: "Encryption",
+    encrypt_instruction: "Load public key file(s) for encryption",
+    pubkey_select_header: "Select Public Key (.pubkey XML)",
+    encrypt_btn: "Encrypt",
+    decrypt_title: "Decryption",
+    decrypt_instruction: "Private key is automatically selected from the list",
+    decrypt_btn: "Decrypt",
+    privkey_import_header: "Import Private Key (.pvtkey XML)",
+    key_mgmt_header: "Key Management",
+    key_name_label: "Key Name (Alphanumeric, _, -, @, . only): ",
+    key_name_placeholder: "e.g. MyKey01",
+    algo_ec: "Elliptic Curve (ECDH)",
+    generate_btn: "Generate Key",
+    key_list_header: "Key List",
+    col_keyname: "Name",
+    col_type: "Type",
+    col_info: "Info",
+    col_operation: "Actions",
+    warning_header: "Warning!",
+    warning_text: "The following operation will <strong>delete all key information</strong>.<br>This cannot be undone, so please be careful.",
+    reset_db_btn: "Initialize Key List",
+    reset_ui_btn: "Reset Screen",
+    reload_url_btn: "Reload Public Key from URL",
+    // JS Messages
+    fingerprint: "Fingerprint",
+    copy: "Copy",
+    copied: "Copied",
+    export_pub: "Export Public Key",
+    share_url: "Share via URL/QR",
+    export_priv: "Export Private Key",
+    delete: "Delete",
+    checking: "Checking...",
+    ok_decryptable: "Decryptable",
+    ng_nokey: "Not Decryptable (No Key)",
+    unknown_format: "Unknown Format",
+    confirm_priv_export: "[WARNING] Exporting a private key is very dangerous. If the private key is leaked, data encrypted by others can be decrypted.\n\nAre you sure you want to export the private key?",
+    confirm_delete: "Are you sure you want to delete key {name}?",
+    confirm_reset_db: "Are you sure you want to delete all keys? This cannot be undone.",
+    alert_deleted: "Deleted key {name}",
+    alert_reset_done: "Key list has been initialized.",
+    alert_reset_err: "Error occurred while initializing key list.",
+    alert_blocked: "Database may be open in another tab.",
+    alert_no_file_enc: "No files to encrypt.",
+    alert_no_file_dec: "No files to decrypt.",
+    alert_done_result: "Process completed.\nSuccess: {success}\nFailed: {fail}",
+    msg_enc_start: "Starting encryption...",
+    msg_enc_processing: "Encrypting: {name}",
+    msg_dec_start: "Starting decryption...",
+    msg_dec_processing: "Decrypting: {name}",
+    err_no_pubkey: "No public key imported for encryption.",
+    err_no_valid_pub: "No valid public key available.",
+    err_no_privkey: "No private key available for decryption.",
+    err_invalid_file: "Invalid file.",
+    err_unknown_entry: "Unknown key entry type.",
+    err_dec_failed: "Matching private key not found or AES decryption failed.",
+    err_aes_dec_fail: "AES decryption failed: ",
+    err_dec_result_invalid: "Decryption result is invalid.",
+    alert_ec_gen_done: "EC Key Pair generated: {name}",
+    alert_ec_gen_err: "EC Key Generation Error: ",
+    alert_unsupported_alg: "Selected algorithm is not supported.",
+    alert_pub_not_found: "Public key not found",
+    alert_import_pub_err: "Import error for public key {name}: ",
+    alert_priv_exists: "Private key {name} already exists. Skipping.",
+    alert_import_priv_done: "Private key import completed",
+    alert_import_priv_err: "Import error for private key {name}: ",
+    alert_keyname_invalid: "Invalid key name. Only Alphanumeric, _, -, @, . allowed.",
+    alert_keyname_exists: "Key with the same name already exists",
+    alert_url_pub_mismatch: "[warning!] Public key and fingerprint do not match!\nShared FP: {expected}\nCalculated FP: {actual}",
+    alert_url_pub_ok: "Received public key from URL\nFingerprint: {fp}",
+    alert_url_load_err: "Failed to load public key from URL: ",
+    
+    label_pub_url: "Public Key URL for {name}",
+    label_pub_url_desc: "You can share the public key via URL or QR Code",
+    btn_copy_url: "Copy URL",
+    
+    header_export_priv: "Export Private Key for {name}",
+    header_export_pub: "Export Public Key for {name}",
+    warn_priv_sensitive: "※ Private keys are extremely sensitive. Handle with care.",
+    btn_download_pub: "Download Public Key",
+    btn_download_priv: "Download Private Key (HANDLE WITH CARE!!)",
+    
+    err_no_priv_exists: "Private key does not exist",
+    err_no_pub_exists: "Public key does not exist",
+    err_export_fail: "Export error: ",
+    
+    status_unknown: "Insufficient Data",
+    status_unencrypted: "Unencrypted/Unknown",
+    status_unknown_type: "Unknown Entry",
+    status_parse_err: "Parse Error"
+  },
+  fr: {
+    app_desc: "Extension Chrome de chiffrement et déchiffrement de fichiers utilisant la cryptographie à clé publique.<br>Gérez vos clés et chiffrez/déchiffrez des fichiers facilement.<br>Les clés sont stockées dans IndexedDB dans votre navigateur, et tout le traitement est effectué localement.",
+    link_manual: "Cliquez ici pour une brève explication (japonais)",
+    processing: "Traitement en cours...",
+    target_files_header: "Fichiers à chiffrer/déchiffrer",
+    drop_area_text: "Déposez les fichiers ici",
+    encrypt_title: "Chiffrement",
+    encrypt_instruction: "Chargez le(s) fichier(s) de clé publique pour le chiffrement",
+    pubkey_select_header: "Sélectionner la clé publique (XML .pubkey)",
+    encrypt_btn: "Chiffrer",
+    decrypt_title: "Déchiffrement",
+    decrypt_instruction: "La clé privée est sélectionnée automatiquement dans la liste",
+    decrypt_btn: "Déchiffrer",
+    privkey_import_header: "Importer une clé privée (XML .pvtkey)",
+    key_mgmt_header: "Gestion des clés",
+    key_name_label: "Nom de la clé (Alphanumérique, _, -, @, . uniquement) : ",
+    key_name_placeholder: "ex: MaCle01",
+    algo_ec: "Courbe Elliptique (ECDH)",
+    generate_btn: "Générer une clé",
+    key_list_header: "Liste des clés",
+    col_keyname: "Nom",
+    col_type: "Type",
+    col_info: "Info",
+    col_operation: "Actions",
+    warning_header: "Attention !",
+    warning_text: "L'opération suivante va <strong>supprimer toutes les informations de clé</strong>.<br>Cette action est irréversible, veuillez donc faire attention.",
+    reset_db_btn: "Initialiser la liste des clés",
+    reset_ui_btn: "Réinitialiser l'écran",
+    reload_url_btn: "Recharger la clé publique depuis l'URL",
+    // JS Messages
+    fingerprint: "Empreinte",
+    copy: "Copier",
+    copied: "Copié",
+    export_pub: "Exporter la clé publique",
+    share_url: "Partager via URL/QR",
+    export_priv: "Exporter la clé privée",
+    delete: "Supprimer",
+    checking: "Vérification...",
+    ok_decryptable: "Déchiffrable",
+    ng_nokey: "Non déchiffrable (Pas de clé)",
+    unknown_format: "Format inconnu",
+    confirm_priv_export: "[ATTENTION] L'exportation d'une clé privée est très dangereuse. Si la clé privée fuite, les données chiffrées par d'autres peuvent être déchiffrées.\n\nÊtes-vous sûr de vouloir exporter la clé privée ?",
+    confirm_delete: "Êtes-vous sûr de vouloir supprimer la clé {name} ?",
+    confirm_reset_db: "Êtes-vous sûr de vouloir supprimer toutes les clés ? Cette action est irréversible.",
+    alert_deleted: "Clé {name} supprimée",
+    alert_reset_done: "La liste des clés a été initialisée.",
+    alert_reset_err: "Une erreur s'est produite lors de l'initialisation de la liste des clés.",
+    alert_blocked: "La base de données peut être ouverte dans un autre onglet.",
+    alert_no_file_enc: "Aucun fichier à chiffrer.",
+    alert_no_file_dec: "Aucun fichier à déchiffrer.",
+    alert_done_result: "Traitement terminé.\nSuccès : {success}\nÉchec : {fail}",
+    msg_enc_start: "Démarrage du chiffrement...",
+    msg_enc_processing: "Chiffrement : {name}",
+    msg_dec_start: "Démarrage du déchiffrement...",
+    msg_dec_processing: "Déchiffrement : {name}",
+    err_no_pubkey: "Aucune clé publique importée pour le chiffrement.",
+    err_no_valid_pub: "Aucune clé publique valide disponible.",
+    err_no_privkey: "Aucune clé privée disponible pour le déchiffrement.",
+    err_invalid_file: "Fichier invalide.",
+    err_unknown_entry: "Type d'entrée de clé inconnu.",
+    err_dec_failed: "Clé privée correspondante introuvable ou échec du déchiffrement AES.",
+    err_aes_dec_fail: "Échec du déchiffrement AES : ",
+    err_dec_result_invalid: "Le résultat du déchiffrement est invalide.",
+    alert_ec_gen_done: "Paire de clés EC générée : {name}",
+    alert_ec_gen_err: "Erreur de génération de clé EC : ",
+    alert_unsupported_alg: "L'algorithme sélectionné n'est pas supporté.",
+    alert_pub_not_found: "Clé publique introuvable",
+    alert_import_pub_err: "Erreur d'importation pour la clé publique {name} : ",
+    alert_priv_exists: "La clé privée {name} existe déjà. Ignoré.",
+    alert_import_priv_done: "Importation de la clé privée terminée",
+    alert_import_priv_err: "Erreur d'importation pour la clé privée {name} : ",
+    alert_keyname_invalid: "Nom de clé invalide. Seuls Alphanumérique, _, -, @, . sont autorisés.",
+    alert_keyname_exists: "Une clé portant le même nom existe déjà",
+    alert_url_pub_mismatch: "[Attention !] La clé publique et l'empreinte ne correspondent pas !\nEmpreinte partagée : {expected}\nEmpreinte calculée : {actual}",
+    alert_url_pub_ok: "Clé publique reçue depuis l'URL\nEmpreinte : {fp}",
+    alert_url_load_err: "Échec du chargement de la clé publique depuis l'URL : ",
+    
+    label_pub_url: "URL de la clé publique pour {name}",
+    label_pub_url_desc: "Vous pouvez partager la clé publique via URL ou QR Code",
+    btn_copy_url: "Copier l'URL",
+    
+    header_export_priv: "Exporter la clé privée pour {name}",
+    header_export_pub: "Exporter la clé publique pour {name}",
+    warn_priv_sensitive: "※ Les clés privées sont extrêmement sensibles. Manipulez-les avec précaution.",
+    btn_download_pub: "Télécharger la clé publique",
+    btn_download_priv: "Télécharger la clé privée (MANIPULER AVEC PRÉCAUTION !!)",
+    
+    err_no_priv_exists: "La clé privée n'existe pas",
+    err_no_pub_exists: "La clé publique n'existe pas",
+    err_export_fail: "Erreur d'exportation : ",
+    
+    status_unknown: "Données insuffisantes",
+    status_unencrypted: "Non chiffré/Inconnu",
+    status_unknown_type: "Entrée inconnue",
+    status_parse_err: "Erreur d'analyse"
+  },
+  lb: {
+    app_desc: "Chrome-Extensioun fir Verschlësselung an Entschlësselung vun Dateien mat ëffentleche Schlësselen.<br>Verwalten Är Schlësselen an verschlësselt/entschlësselt Dateien einfach.<br>D'Schlëssel ginn an der IndexedDB an Ärem Browser gespäichert, an all Veraarbechtung gëtt lokal gemaach.",
+    link_manual: "Klickt hei fir eng kuerz Erklärung (Japanesch)",
+    processing: "Veraarbechtung...",
+    target_files_header: "Dateien fir ze Verschlësselen/Entschlësselen",
+    drop_area_text: "Dateien hei ofleeën",
+    encrypt_title: "Verschlësselung",
+    encrypt_instruction: "Lued ëffentlech Schlësseldatei(en) fir Verschlësselung",
+    pubkey_select_header: "Wielt ëffentleche Schlëssel (XML .pubkey)",
+    encrypt_btn: "Verschlësselen",
+    decrypt_title: "Entschlësselung",
+    decrypt_instruction: "De private Schlëssel gëtt automatesch aus der Lëscht ausgewielt",
+    decrypt_btn: "Entschlësselen",
+    privkey_import_header: "Privaten Schlëssel importéieren (XML .pvtkey)",
+    key_mgmt_header: "Schlësselverwaltung",
+    key_name_label: "Schlësselnumm (Nëmmen Alphanumeresch, _, -, @, .) : ",
+    key_name_placeholder: "z.B. MäiSchlëssel01",
+    algo_ec: "Elliptesch Kéier (ECDH)",
+    generate_btn: "Schlëssel generéieren",
+    key_list_header: "Schlëssellëscht",
+    col_keyname: "Numm",
+    col_type: "Typ",
+    col_info: "Info",
+    col_operation: "Aktiounen",
+    warning_header: "Opgepasst!",
+    warning_text: "Déi folgend Operatioun wäert <strong>all Schlësselinformatioun läschen</strong>.<br>Dëst kann net réckgängeg gemaach ginn, also passt w.e.g. op.",
+    reset_db_btn: "Schlëssellëscht initialiséieren",
+    reset_ui_btn: "Bildschierm zrécksetzen",
+    reload_url_btn: "Ëffentleche Schlëssel vun URL nei lueden",
+    // JS Messages
+    fingerprint: "Fangerofdrock",
+    copy: "Kopéieren",
+    copied: "Kopéiert",
+    export_pub: "Ëffentleche Schlëssel exportéieren",
+    share_url: "Deelen iwwer URL/QR",
+    export_priv: "Privaten Schlëssel exportéieren",
+    delete: "Läschen",
+    checking: "Iwwerpréiwen...",
+    ok_decryptable: "Entschlësselbar",
+    ng_nokey: "Net entschlësselbar (Kee Schlëssel)",
+    unknown_format: "Onbekannt Format",
+    confirm_priv_export: "[OPGEPASST] En private Schlëssel exportéieren ass ganz geféierlech. Wann de private Schlëssel geleckt gëtt, kënnen Donnéeën, déi vun aneren verschlësselt goufen, entschlësselt ginn.\n\nSidd Dir sécher, datt Dir de private Schlëssel exportéiere wëllt?",
+    confirm_delete: "Sidd Dir sécher, datt Dir de Schlëssel {name} läsche wëllt?",
+    confirm_reset_db: "Sidd Dir sécher, datt Dir all Schlëssel läsche wëllt? Dëst kann net réckgängeg gemaach ginn.",
+    alert_deleted: "Schlëssel {name} geläscht",
+    alert_reset_done: "Schlëssellëscht gouf initialiséiert.",
+    alert_reset_err: "Feeler beim Initialiséieren vun der Schlëssellëscht.",
+    alert_blocked: "Datebank kéint an engem aneren Tab op sinn.",
+    alert_no_file_enc: "Keng Dateien fir ze verschlësselen.",
+    alert_no_file_dec: "Keng Dateien fir ze entschlësselen.",
+    alert_done_result: "Veraarbechtung fäerdeg.\nErfolleg: {success}\nFeeler: {fail}",
+    msg_enc_start: "Verschlësselung starten...",
+    msg_enc_processing: "Verschlësselen: {name}",
+    msg_dec_start: "Entschlësselung starten...",
+    msg_dec_processing: "Entschlësselen: {name}",
+    err_no_pubkey: "Kee ëffentleche Schlëssel fir Verschlësselung importéiert.",
+    err_no_valid_pub: "Kee gültegen ëffentleche Schlëssel verfügbar.",
+    err_no_privkey: "Kee private Schlëssel fir Entschlësselung verfügbar.",
+    err_invalid_file: "Ongülteg Datei.",
+    err_unknown_entry: "Onbekannte Schlëssel-Entréestyp.",
+    err_dec_failed: "Passende private Schlëssel net fonnt oder AES Entschlësselung feelgeschloen.",
+    err_aes_dec_fail: "AES Entschlësselung feelgeschloen: ",
+    err_dec_result_invalid: "Entschlësselungsresultat ass ongülteg.",
+    alert_ec_gen_done: "EC Schlësselpaar generéiert: {name}",
+    alert_ec_gen_err: "EC Schlëssel Generatiounsfeeler: ",
+    alert_unsupported_alg: "Ausgewielten Algorithmus gëtt net ënnerstëtzt.",
+    alert_pub_not_found: "Ëffentleche Schlëssel net fonnt",
+    alert_import_pub_err: "Importfeeler fir ëffentleche Schlëssel {name}: ",
+    alert_priv_exists: "Private Schlëssel {name} existéiert schonn. Iwwersprongen.",
+    alert_import_priv_done: "Privaten Schlëssel Import fäerdeg",
+    alert_import_priv_err: "Importfeeler fir private Schlëssel {name}: ",
+    alert_keyname_invalid: "Ongültege Schlësselnumm. Nëmmen Alphanumeresch, _, -, @, . erlaabt.",
+    alert_keyname_exists: "Schlëssel mam selwechten Numm existéiert schonn",
+    alert_url_pub_mismatch: "[Opgepasst!] Ëffentleche Schlëssel a Fangerofdrock stëmmen net iwwerenee!\nGedeelten FP: {expected}\nBerechent FP: {actual}",
+    alert_url_pub_ok: "Ëffentleche Schlëssel vun URL kritt\nFangerofdrock: {fp}",
+    alert_url_load_err: "Feeler beim Lueden vum ëffentleche Schlëssel vun der URL: ",
+    
+    label_pub_url: "Ëffentleche Schlëssel URL fir {name}",
+    label_pub_url_desc: "Dir kënnt den ëffentleche Schlëssel iwwer URL oder QR Code deelen",
+    btn_copy_url: "URL kopéieren",
+    
+    header_export_priv: "Privaten Schlëssel exportéieren fir {name}",
+    header_export_pub: "Ëffentleche Schlëssel exportéieren fir {name}",
+    warn_priv_sensitive: "※ Privat Schlëssel sinn extrem sensibel. Gitt virsiichteg domat ëm.",
+    btn_download_pub: "Ëffentleche Schlëssel eroflueden",
+    btn_download_priv: "Privaten Schlëssel eroflueden (OPGEPASST!!)",
+    
+    err_no_priv_exists: "Privaten Schlëssel existéiert net",
+    err_no_pub_exists: "Ëffentleche Schlëssel existéiert net",
+    err_export_fail: "Exportfeeler: ",
+    
+    status_unknown: "Net genuch Daten",
+    status_unencrypted: "Net verschlësselt/Onbekannt",
+    status_unknown_type: "Onbekannten Entrée",
+    status_parse_err: "Analysfeeler"
+  }
+};
 
 // ── グローバル変数 ──
 let db;
@@ -17,7 +405,8 @@ const keyStore = {};
 const importedPrivateKeys = [];
 const encryptionPublicKeys = [];
 const filesToProcess = [];
-// UIブロックIDリスト（必要に応じて増減可）
+let currentLang = 'ja'; // デフォルト
+
 const HIDEABLE_UI_BLOCK_IDS = [
   'pubkey-file-select-block',
   'decrypt-block',
@@ -28,34 +417,69 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'decrypt-block'
 ];
 
-// ── Fingerprint生成関数追加 ──
+// ── i18n ヘルパー ──
+function t(key, params = {}) {
+  let text = resources[currentLang][key] || key;
+  for (const [k, v] of Object.entries(params)) {
+    text = text.replace(`{${k}}`, v);
+  }
+  return text;
+}
+
+function updateUIText() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    el.innerHTML = t(key); // HTMLタグを含む場合があるためinnerHTML
+  });
+  // プレースホルダー更新
+  const keyNameInput = document.getElementById('keyNameInput');
+  if(keyNameInput) keyNameInput.placeholder = t('key_name_placeholder');
+
+  // 言語スイッチャーの表示更新
+  document.getElementById('lang-ja').className = currentLang === 'ja' ? 'active' : '';
+  document.getElementById('lang-en').className = currentLang === 'en' ? 'active' : '';
+  document.getElementById('lang-fr').className = currentLang === 'fr' ? 'active' : '';
+  document.getElementById('lang-lb').className = currentLang === 'lb' ? 'active' : '';
+  
+  // リスト再描画
+  refreshKeyList(); 
+}
+
+function changeLanguage(lang) {
+  currentLang = lang;
+  updateUIText();
+}
+
+// ── Fingerprint生成関数 ──
 async function calcFingerprint(publicKey) {
   const raw = await crypto.subtle.exportKey("raw", publicKey);
   const hash = await crypto.subtle.digest("SHA-256", raw);
-  // base64url形式
   let b64 = btoa(String.fromCharCode(...new Uint8Array(hash)))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return b64;
 }
 
 // ── UI補助関数 ──
-function showSpinner() {
-  document.getElementById('spinner').style.display = 'block';
+function showSpinner(text) {
+  const spinner = document.getElementById('spinner');
+  spinner.textContent = text || t('processing');
+  spinner.style.display = 'block';
+}
+function updateSpinnerText(text) {
+    document.getElementById('spinner').textContent = text;
 }
 function hideSpinner() {
   document.getElementById('spinner').style.display = 'none';
 }
 function clearExportArea() {
-  document.getElementById('exportArea').innerHTML = "";
-  document.getElementById('exportArea').style.display = 'none';
+  const exportArea = document.getElementById('exportArea');
+  exportArea.textContent = "";
+  exportArea.style.display = 'none';
 }
-
 function dispExportArea() {
   document.getElementById('exportArea').style.display = '';
 }
 
-
-// chrome拡張機能のときはボタンを隠す
 function hideResetUiButtonsInExtension() {
   if (typeof chrome !== "undefined" && typeof chrome.runtime !== "undefined") {
     const UIinitArea = document.getElementById('UI-init');
@@ -63,32 +487,26 @@ function hideResetUiButtonsInExtension() {
   }
 }
 
-
 // --- UI初期化時 ---
 function resetUI() {
   filesToProcess.length = 0;
   encryptionPublicKeys.length = 0;
-  document.getElementById('fileList').innerHTML = "";
-  document.getElementById('fileDropArea').textContent = "ここにファイルをドロップ";
-  document.getElementById('pubKeyList').innerHTML = "";
+  document.getElementById('fileList').textContent = "";
+  document.getElementById('fileDropArea').textContent = t('drop_area_text');
+  document.getElementById('pubKeyList').textContent = "";
   document.getElementById('fileSelect').value = "";
-  document.getElementById('privKeyList').innerHTML = "";
+  document.getElementById('privKeyList').textContent = "";
   hideSpinner();
   clearExportArea();
-
-
-  // --- 非表示を「表示」に戻す ---
   setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
 }
 
-// --- UI初期化時 ---
 function resetUIEncrypt() {
   filesToProcess.length = 0;
-  document.getElementById('fileList').innerHTML = "";
-  document.getElementById('fileDropArea').textContent = "ここにファイルをドロップ";
+  document.getElementById('fileList').textContent = "";
+  document.getElementById('fileDropArea').textContent = t('drop_area_text');
   document.getElementById('fileSelect').value = "";
   hideSpinner();
-
 }
 
 // ── ユーティリティ関数 ──
@@ -200,7 +618,6 @@ async function loadKeysFromDB() {
         keyStore[record.name].publicKey = pubKey;
         keyStore[record.name].type = "EC";
         keyStore[record.name].curve = record.publicKeyJwk.crv;
-        // --- Fingerprint追加 ---
         keyStore[record.name].fingerprint = await calcFingerprint(pubKey);
       }
       if (record.privateKeyJwk && record.type === "EC") {
@@ -242,7 +659,6 @@ async function importPublicKeyFromXmlEC(xmlString, fileName) {
   );
   const raw = await crypto.subtle.exportKey("raw", cryptoKey);
   const identifier = arrayBufferToBase64(raw);
-  // --- Fingerprint追加 ---
   const fingerprint = await calcFingerprint(cryptoKey);
   return { name: fileName, identifier: identifier, cryptoKey: cryptoKey, type: "EC", curve: curve, fingerprint: fingerprint };
 }
@@ -270,7 +686,6 @@ async function importPrivateKeyFromXmlEC(xmlString, fileName) {
   );
   const raw = await crypto.subtle.exportKey("raw", publicCryptoKey);
   const identifier = arrayBufferToBase64(raw);
-  // --- Fingerprint追加 ---
   const fingerprint = await calcFingerprint(publicCryptoKey);
   return { name: fileName, identifier: identifier, publicKey: publicCryptoKey, privateKey: privateCryptoKey, type: "EC", curve: curve, fingerprint: fingerprint };
 }
@@ -295,9 +710,107 @@ async function importPrivateKeyFromXmlUnified(xmlString, fileName) {
   }
 }
 
+// ── ファイルの復号可能性チェック機能 ──
+async function checkFileDecryptability(file) {
+  try {
+    const slice = file.slice(0, HEADER_CHECK_SIZE); 
+    const buffer = await slice.arrayBuffer();
+    const view = new DataView(buffer);
+    const uint8 = new Uint8Array(buffer);
+    
+    let offset = 0;
+    
+    if (buffer.byteLength < 4) return { status: 'UNKNOWN', message: t('status_unknown') };
+    const entryCount = readInt32LE(view, offset);
+    offset += 4;
+
+    if (entryCount < 0 || entryCount > 1000) {
+      return { status: 'UNKNOWN', message: t('status_unencrypted') };
+    }
+
+    for (let i = 0; i < entryCount; i++) {
+      if (offset >= buffer.byteLength) break;
+      
+      const type = uint8[offset];
+      offset += 1;
+      
+      if (type === 1) { // EC Entry
+        if (offset + 4 > buffer.byteLength) break;
+        const idLen = readInt32LE(view, offset);
+        offset += 4;
+        
+        if (offset + idLen > buffer.byteLength) break;
+        const recipientId = uint8.slice(offset, offset + idLen);
+        const recipientIdB64 = arrayBufferToBase64(recipientId);
+        offset += idLen;
+
+        const matchedKey = importedPrivateKeys.find(k => k.identifier === recipientIdB64);
+        if (matchedKey) {
+          return { status: 'OK', keyName: matchedKey.name };
+        }
+
+        if (offset + 4 > buffer.byteLength) break;
+        const ephLen = readInt32LE(view, offset);
+        offset += 4 + ephLen;
+
+        if (offset + 4 > buffer.byteLength) break;
+        const wrapLen = readInt32LE(view, offset);
+        offset += 4 + wrapLen;
+      } else {
+        return { status: 'UNKNOWN', message: t('status_unknown_type') };
+      }
+    }
+    
+    return { status: 'NO_KEY' };
+    
+  } catch (e) {
+    console.error(e);
+    return { status: 'UNKNOWN', message: t('status_parse_err') };
+  }
+}
+
 // ── ファイルドラッグ＆ドロップ／選択処理 ──
 const fileDropArea = document.getElementById('fileDropArea');
 const fileListElem = document.getElementById('fileList');
+
+async function addFilesToList(files) {
+  for (let file of files) {
+    filesToProcess.push(file);
+    const li = document.createElement('li');
+    
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = file.name;
+    nameSpan.style.fontWeight = 'bold';
+    li.appendChild(nameSpan);
+
+    const statusSpan = document.createElement('span');
+    statusSpan.style.marginLeft = '10px';
+    statusSpan.style.fontSize = '0.9em';
+    statusSpan.style.color = '#777';
+    statusSpan.textContent = ' ⏳ ' + t('checking');
+    li.appendChild(statusSpan);
+
+    fileListElem.appendChild(li);
+
+    checkFileDecryptability(file).then(result => {
+      statusSpan.textContent = ""; 
+      
+      if (result.status === 'OK') {
+        statusSpan.style.color = '#2e7d32'; 
+        statusSpan.textContent = ` ✅ ${t('ok_decryptable')} (${t('col_keyname')}: ${result.keyName})`;
+      } else if (result.status === 'NO_KEY') {
+        statusSpan.style.color = '#c62828'; 
+        statusSpan.textContent = ` ❌ ${t('ng_nokey')}`;
+      } else {
+        statusSpan.style.color = '#999';
+        if (file.name.endsWith('.crypted')) {
+            statusSpan.textContent = ` ⚠️ ${t('unknown_format')}`;
+        }
+      }
+    });
+  }
+}
+
 fileDropArea.addEventListener('dragover', (e) => {
   e.preventDefault();
   fileDropArea.style.borderColor = "#000";
@@ -310,24 +823,15 @@ fileDropArea.addEventListener('drop', (e) => {
   e.preventDefault();
   fileDropArea.style.borderColor = "#888";
   const files = e.dataTransfer.files;
-  for (let file of files) {
-    filesToProcess.push(file);
-    const li = document.createElement('li');
-    li.textContent = file.name;
-    fileListElem.appendChild(li);
-  }
+  addFilesToList(files);
 });
 document.getElementById('fileSelect').addEventListener('change', (e) => {
   const files = e.target.files;
-  for (let file of files) {
-    filesToProcess.push(file);
-    const li = document.createElement('li');
-    li.textContent = file.name;
-    fileListElem.appendChild(li);
-  }
+  addFilesToList(files);
+  e.target.value = "";
 });
 
-// ── 公開鍵ファイル入力（暗号化用）：読み込んだ鍵は encryptionPublicKeys に登録する ──
+// ── 公開鍵ファイル入力 ──
 const pubKeyListElem = document.getElementById('pubKeyList');
 document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
   const files = e.target.files;
@@ -336,19 +840,39 @@ document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
     try {
       const pubKey = await importPublicKeyFromXmlUnified(text, file.name);
       encryptionPublicKeys.push(pubKey);
+      
       const li = document.createElement('li');
-      li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
-      <span style="font-size:0.91em;color:#777;">フィンガープリント: ${pubKey.fingerprint}</span>
-      <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
+      const keyInfoDiv = document.createElement('div');
+      keyInfoDiv.textContent = `${pubKey.name} (${pubKey.type})`;
+      const br = document.createElement('br');
+      const fpSpan = document.createElement('span');
+      fpSpan.style.fontSize = '0.91em';
+      fpSpan.style.color = '#777';
+      fpSpan.textContent = `${t('fingerprint')}: ${pubKey.fingerprint}`;
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = t('copy');
+      copyBtn.style.marginLeft = '6px';
+      copyBtn.style.fontSize = '0.9em';
+      copyBtn.style.padding = '2px 8px';
+      copyBtn.onclick = () => {
+          navigator.clipboard.writeText(pubKey.fingerprint);
+          alert(t('copied'));
+      };
+      
+      li.appendChild(keyInfoDiv);
+      li.appendChild(br);
+      li.appendChild(fpSpan);
+      li.appendChild(copyBtn);
+      
       pubKeyListElem.appendChild(li);
     } catch(err) {
-      alert("公開鍵 " + file.name + " のインポートエラー: " + err.message);
+      alert(t('alert_import_pub_err', {name: file.name}) + err.message);
     }
   }
   e.target.value = "";
 });
 
-// ── 秘密鍵ファイル入力（インポート＆DB保存、公開鍵自動生成） ──
+// ── 秘密鍵ファイル入力 ──
 const privKeyListElem = document.getElementById('privKeyList');
 document.getElementById('privKeyInput').addEventListener('change', async (e) => {
   let imported = false;
@@ -361,7 +885,7 @@ document.getElementById('privKeyInput').addEventListener('change', async (e) => 
         keyName = keyName.slice(0, -7);
       }
       if (keyStore[keyName]) {
-        alert("秘密鍵 " + keyName + " は既に存在するため、インポートをスキップします。");
+        alert(t('alert_priv_exists', {name: keyName}));
         continue;
       }
       const keyPair = await importPrivateKeyFromXmlUnified(text, keyName);
@@ -370,12 +894,14 @@ document.getElementById('privKeyInput').addEventListener('change', async (e) => 
         privateKey: keyPair.privateKey, 
         type: keyPair.type,
         curve: keyPair.curve,
-        fingerprint: keyPair.fingerprint // --- Fingerprint追加 ---
+        fingerprint: keyPair.fingerprint 
       };
       importedPrivateKeys.push({ name: keyPair.name, identifier: keyPair.identifier, cryptoKey: keyPair.privateKey, type: keyPair.type });
+      
       const li = document.createElement('li');
       li.textContent = keyPair.name + " (" + keyPair.type + ")";
       privKeyListElem.appendChild(li);
+      
       const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
       const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
       await storeKeyPair(keyPair.name, keyPair.type, publicJwk, privateJwk);
@@ -383,17 +909,17 @@ document.getElementById('privKeyInput').addEventListener('change', async (e) => 
       clearExportArea();
       imported = true;
     } catch(err) {
-      alert("秘密鍵 " + file.name + " のインポートエラー: " + err.message);
+      alert(t('alert_import_priv_err', {name: file.name}) + err.message);
     }
   }
   e.target.value = "";
   if(imported){
-    alert("秘密鍵インポート完了");
+    alert(t('alert_import_priv_done'));
   }
   resetUI();
 });
 
-// ── ファイル暗号化処理（統合版） ──
+// ── ファイル暗号化処理 ──
 async function encryptFile(file) {
   const aesKey = await crypto.subtle.generateKey(
     { name: AES_ALGORITHM, length: AES_KEY_LENGTH },
@@ -403,8 +929,7 @@ async function encryptFile(file) {
   const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
 
   if (encryptionPublicKeys.length === 0) {
-    alert("暗号化のために公開鍵がインポートされていません。");
-    return;
+    throw new Error(t('err_no_pubkey'));
   }
   const uniquePublicKeys = [];
   const seen = new Set();
@@ -447,13 +972,12 @@ async function encryptFile(file) {
           wrappingOutput: wrappingOutput
         });
       } catch (err) {
-        console.error("EC暗号化失敗: ", err);
+        console.error("EC Encrypt Fail: ", err);
       }
     }
   }
   if (entries.length === 0) {
-    alert("有効な公開鍵がありません。");
-    return;
+    throw new Error(t('err_no_valid_pub'));
   }
   const fileBuffer = new Uint8Array(await file.arrayBuffer());
   const fileNameBytes = encoder.encode(file.name);
@@ -486,17 +1010,17 @@ async function encryptFile(file) {
   a.click();
 }
 
-// ── ファイル復号処理（統合版） ──
+// ── ファイル復号処理 ──
 async function decryptFile(file) {
   try {
     if (importedPrivateKeys.length === 0) {
-      throw new Error("復号のための秘密鍵が存在しません。");
+      throw new Error(t('err_no_privkey'));
     }
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
     const view = new DataView(fileBuffer.buffer);
     let offset = 0;
     if (fileBuffer.length < 4) {
-      throw new Error("ファイルが不正です。");
+      throw new Error(t('err_invalid_file'));
     }
     const entryCount = readInt32LE(view, offset);
     offset += 4;
@@ -520,11 +1044,11 @@ async function decryptFile(file) {
         offset += wrapLen;
         headerEntries.push({ type: 1, recipientId: recipientId, ephemeralPub: ephemeralPub, wrappingOutput: wrappingOutput });
       } else {
-        throw new Error("不明な鍵エントリータイプです。");
+        throw new Error(t('err_unknown_entry'));
       }
     }
     if (offset + AES_IV_LENGTH > fileBuffer.length) {
-      throw new Error("ファイルが不正です。");
+      throw new Error(t('err_invalid_file'));
     }
     const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH);
     offset += AES_IV_LENGTH;
@@ -565,23 +1089,23 @@ async function decryptFile(file) {
       if (found) break;
     }
     if (!found || !aesKeyRaw) {
-      throw new Error("一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。");
+      throw new Error(t('err_dec_failed'));
     }
     const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
     let payloadPlainBuffer;
     try {
       payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
     } catch (err) {
-      throw new Error("AES復号に失敗しました: " + err.message);
+      throw new Error(t('err_aes_dec_fail') + err.message);
     }
     const payloadPlain = new Uint8Array(payloadPlainBuffer);
     const dv = new DataView(payloadPlain.buffer);
     if (payloadPlain.length < 4) {
-      throw new Error("復号結果が不正です。");
+      throw new Error(t('err_dec_result_invalid'));
     }
     const fnameLen = dv.getInt32(0, true);
     if (4 + fnameLen > payloadPlain.length) {
-      throw new Error("復号結果が不正です。");
+      throw new Error(t('err_dec_result_invalid'));
     }
     const fnameBytes = payloadPlain.slice(4, 4 + fnameLen);
     const originalFileName = decoder.decode(fnameBytes);
@@ -592,36 +1116,60 @@ async function decryptFile(file) {
     a.download = originalFileName;
     a.click();
   } catch (err) {
-    alert("復号エラー: " + err.message);
+    throw err;
   }
 }
 
 // ── ボタン押下処理 ──
 document.getElementById('encryptBtn').addEventListener('click', async () => {
   if (filesToProcess.length === 0) {
-    alert("暗号化するファイルがありません。");
+    alert(t('alert_no_file_enc'));
     return;
   }
-  showSpinner();
+  showSpinner(t('msg_enc_start'));
+  let successCount = 0;
+  let failCount = 0;
+
   for (let file of filesToProcess) {
-    await encryptFile(file);
+    updateSpinnerText(t('msg_enc_processing', {name: file.name}));
+    try {
+      await encryptFile(file);
+      successCount++;
+    } catch (e) {
+      console.error(e);
+      failCount++;
+    }
   }
   resetUIEncrypt();
   hideSpinner();
-});
-document.getElementById('decryptBtn').addEventListener('click', async () => {
-  if (filesToProcess.length === 0) {
-    alert("復号するファイルがありません。");
-    return;
-  }
-  showSpinner();
-  for (let file of filesToProcess) {
-    await decryptFile(file);
-  }
-  resetUI();
+  alert(t('alert_done_result', {success: successCount, fail: failCount}));
 });
 
-// ── 鍵生成（統合版）：選択されたアルゴリズムに応じて鍵ペア生成 ──
+document.getElementById('decryptBtn').addEventListener('click', async () => {
+  if (filesToProcess.length === 0) {
+    alert(t('alert_no_file_dec'));
+    return;
+  }
+  showSpinner(t('msg_dec_start'));
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let file of filesToProcess) {
+    updateSpinnerText(t('msg_dec_processing', {name: file.name}));
+    try {
+      await decryptFile(file);
+      successCount++;
+    } catch (e) {
+      console.error(e);
+      failCount++;
+    }
+  }
+  resetUI();
+  hideSpinner();
+  alert(t('alert_done_result', {success: successCount, fail: failCount}));
+});
+
+// ── 鍵生成 ──
 async function generateKeyPair(name, algType) {
   if (algType === "EC") {
     try {
@@ -629,14 +1177,13 @@ async function generateKeyPair(name, algType) {
         { name: EC_ALGORITHM, namedCurve: DEFAULT_EC_CURVE },
         true, ["deriveKey", "deriveBits"]
       );
-      // --- Fingerprint追加 ---
       const fingerprint = await calcFingerprint(keyPair.publicKey);
       keyStore[name] = { 
         publicKey: keyPair.publicKey, 
         privateKey: keyPair.privateKey, 
         type: "EC",
         curve: DEFAULT_EC_CURVE,
-        fingerprint: fingerprint // 追加
+        fingerprint: fingerprint
       };
       const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
       const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
@@ -644,49 +1191,41 @@ async function generateKeyPair(name, algType) {
       const raw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
       const identifier = arrayBufferToBase64(raw);
       importedPrivateKeys.push({ name: name, identifier: identifier, cryptoKey: keyPair.privateKey, type: "EC" });
-      alert("楕円曲線鍵ペア生成完了: " + name);
+      alert(t('alert_ec_gen_done', {name: name}));
       refreshKeyList();
     } catch (e) {
       console.error(e);
-      alert("楕円曲線鍵生成エラー: " + e);
+      alert(t('alert_ec_gen_err') + e);
     }
   } else {
-    alert("選択されたアルゴリズムはサポートされていません。");
+    alert(t('alert_unsupported_alg'));
   }
 }
 
-// ── 公開鍵URL共有機能（追加分） ──
+// ── 公開鍵URL共有機能 ──
 async function exportPubkeyUrl(name) {
     const keyPair = keyStore[name];
     if (!keyPair || !keyPair.publicKey) {
-        alert("公開鍵が見つかりません");
+        alert(t('alert_pub_not_found'));
         return;
     }
 
-    // JWK を XML に変換
     const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const xml = convertPublicJwkToXml(jwk);
-
-    // XML を UTF-8→Base64Url にエンコード
     const utf8 = new TextEncoder().encode(xml);
     const b64 = btoa(String.fromCharCode(...utf8));
     const b64url = base64ToBase64Url(b64);
-
-    // フィンガープリント
     const fingerprint = keyPair.fingerprint;
     const url = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
 
-    // 出力エリア初期化＆表示
     const exportArea = document.getElementById("exportArea");
-    exportArea.innerHTML = ""; // クリア
+    clearExportArea();
     dispExportArea();
 
-    // 見出し
     const h3 = document.createElement("h3");
-    h3.textContent = `${name} の 公開鍵URL`;
+    h3.textContent = t('label_pub_url', {name: name});
     exportArea.appendChild(h3);
 
-    // URL テキストボックス
     const input = document.createElement("input");
     input.type = "text";
     input.value = url;
@@ -695,31 +1234,23 @@ async function exportPubkeyUrl(name) {
     exportArea.appendChild(input);
     exportArea.appendChild(document.createElement("br"));
 
-    // コピー用ボタン
     const button = document.createElement("button");
-    button.textContent = "公開鍵のURLをコピー";
+    button.textContent = t('btn_copy_url');
     button.addEventListener("click", () => {
         navigator.clipboard.writeText(url);
-        button.textContent = "コピーしました";
+        button.textContent = t('copied');
     });
     exportArea.appendChild(button);
 
-    // 説明文
     const p = document.createElement("p");
-    p.textContent = "公開鍵をURL/QRコードで共有できます";
+    p.textContent = t('label_pub_url_desc');
     exportArea.appendChild(p);
 
-    // ── QRコード用コンテナを exportArea 内に準備 ──
-    let qrContainer = exportArea.querySelector("#qrcode");
-    if (!qrContainer) {
-        qrContainer = document.createElement("div");
-        qrContainer.id = "qrcode";
-        qrContainer.style.marginTop = "16px";
-        exportArea.appendChild(qrContainer);
-    }
-    qrContainer.innerHTML = ""; // 前回の描画をクリア
+    const qrContainer = document.createElement("div");
+    qrContainer.id = "qrcode";
+    qrContainer.style.marginTop = "16px";
+    exportArea.appendChild(qrContainer);
 
-    // ── QRコード生成 ──
     new QRCode(qrContainer, {
         text: url,
         width: QR_CODE_SIZE,
@@ -728,11 +1259,10 @@ async function exportPubkeyUrl(name) {
     });
 }
 
-
-// ── 鍵一覧の再表示：公開鍵URL共有ボタンを追加 ──
+// ── 鍵一覧の再表示 ──
 function refreshKeyList() {
   const tbody = document.getElementById("keyTable").querySelector("tbody");
-  tbody.innerHTML = "";
+  tbody.textContent = "";
   for (const name in keyStore) {
     const tr = document.createElement("tr");
     const tdName = document.createElement("td");
@@ -744,13 +1274,28 @@ function refreshKeyList() {
     tr.appendChild(tdType);
 
     const tdKeyInfo = document.createElement("td");
-    // --- Fingerprint表示追加 ---
     if (keyStore[name].type === "EC") {
-      tdKeyInfo.innerHTML = `
-        Curve: ${keyStore[name].curve ? keyStore[name].curve : "N/A"}<br>
-        <span style="font-size:0.91em;color:#777;">フィンガープリント: ${keyStore[name].fingerprint ? keyStore[name].fingerprint : "N/A"}</span>
-        <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${keyStore[name].fingerprint}')">Copy</button>
-      `;
+      const curveInfo = document.createTextNode(`Curve: ${keyStore[name].curve ? keyStore[name].curve : "N/A"}`);
+      const br = document.createElement("br");
+      const fpSpan = document.createElement("span");
+      fpSpan.style.fontSize = "0.91em";
+      fpSpan.style.color = "#777";
+      fpSpan.textContent = `${t('fingerprint')}: ${keyStore[name].fingerprint ? keyStore[name].fingerprint : "N/A"}`;
+      
+      const copyBtn = document.createElement("button");
+      copyBtn.textContent = t('copy');
+      copyBtn.style.marginLeft = "6px";
+      copyBtn.style.fontSize = "0.9em";
+      copyBtn.style.padding = "2px 8px";
+      copyBtn.onclick = () => {
+          navigator.clipboard.writeText(keyStore[name].fingerprint);
+          alert(t('copied'));
+      };
+      
+      tdKeyInfo.appendChild(curveInfo);
+      tdKeyInfo.appendChild(br);
+      tdKeyInfo.appendChild(fpSpan);
+      tdKeyInfo.appendChild(copyBtn);
     } else {
       tdKeyInfo.textContent = "N/A";
     }
@@ -759,24 +1304,24 @@ function refreshKeyList() {
     const tdOps = document.createElement("td");
 
     const exportPubBtn = document.createElement("button");
-    exportPubBtn.textContent = "公開鍵をエクスポート";
+    exportPubBtn.textContent = t('export_pub');
     exportPubBtn.onclick = () => exportKey(name, "public");
 
     const exportPubUrlBtn = document.createElement("button");
-    exportPubUrlBtn.textContent = "公開鍵をURL/QRコードで共有";
+    exportPubUrlBtn.textContent = t('share_url');
     exportPubUrlBtn.onclick = () => exportPubkeyUrl(name);
 
     const exportPrivBtn = document.createElement("button");
-    exportPrivBtn.textContent = "秘密鍵をエクスポート";
+    exportPrivBtn.textContent = t('export_priv');
     exportPrivBtn.classList.add('export-privkey-btn');
     exportPrivBtn.onclick = () => {
-      if (confirm("【注意】秘密鍵のエクスポートは非常に危険です。秘密鍵が漏洩すると、他の人によって暗号化されたデータが復号される可能性があります\n\n本当に秘密鍵をエクスポートしてもよろしいですか？")) {
+      if (confirm(t('confirm_priv_export'))) {
         exportKey(name, "private");
       }
     };
 
     const deleteBtn = document.createElement("button");
-    deleteBtn.textContent = "削除";
+    deleteBtn.textContent = t('delete');
     deleteBtn.onclick = () => deleteKey(name);
 
     tdOps.appendChild(exportPubBtn);
@@ -792,7 +1337,7 @@ function refreshKeyList() {
   }
 }
 
-// ── 鍵エクスポート（統合版）：鍵種に応じてXML形式に変換 ──
+// ── 鍵エクスポート ──
 function convertPublicJwkToXml(jwk) {
   if (jwk.kty === "EC") {
     return `<ECKeyValue><Curve>${jwk.crv}</Curve><X>${jwk.x}</X><Y>${jwk.y}</Y></ECKeyValue>`;
@@ -807,10 +1352,10 @@ async function exportKey(name, type) {
   const keyPair = keyStore[name];
   let key;
   if (type === "public") {
-    if (!keyPair.publicKey) { alert("公開鍵が存在しません"); return; }
+    if (!keyPair.publicKey) { alert(t('err_no_pub_exists')); return; }
     key = keyPair.publicKey;
   } else if (type === "private") {
-    if (!keyPair.privateKey) { alert("秘密鍵が存在しません"); return; }
+    if (!keyPair.privateKey) { alert(t('err_no_priv_exists')); return; }
     key = keyPair.privateKey;
   }
   try {
@@ -822,13 +1367,24 @@ async function exportKey(name, type) {
       xml = convertPrivateJwkToXml(jwk);
     }
     const exportArea = document.getElementById("exportArea");
+    clearExportArea();
     dispExportArea();
+    
+    const h3 = document.createElement("h3");
     if (type === "private") {
-      exportArea.innerHTML = `<h3>${name} の 秘密鍵をエクスポートする</h3>
-                              <p style="color: red; font-weight: bold;">※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。</p>`;
+      h3.textContent = t('header_export_priv', {name: name});
+      exportArea.appendChild(h3);
+      
+      const p = document.createElement("p");
+      p.style.color = "red";
+      p.style.fontWeight = "bold";
+      p.textContent = t('warn_priv_sensitive');
+      exportArea.appendChild(p);
     } else {
-      exportArea.innerHTML = `<h3>${name} の 公開鍵をエクスポートする</h3>`;
+      h3.textContent = t('header_export_pub', {name: name});
+      exportArea.appendChild(h3);
     }
+    
     const textarea = document.createElement("textarea");
     textarea.rows = 10;
     textarea.value = xml;
@@ -837,11 +1393,9 @@ async function exportKey(name, type) {
     const blob = new Blob([xml], { type: "application/xml" });
     const url = URL.createObjectURL(blob);
 
-    // --- ボタン化したダウンロードリンク ---
     const downloadBtn = document.createElement("button");
-    downloadBtn.textContent = (type === "public" ? "公開鍵" : "秘密鍵（取り扱い注意！！）") + "をダウンロードする";
+    downloadBtn.textContent = (type === "public" ? t('btn_download_pub') : t('btn_download_priv'));
     downloadBtn.style.marginTop = "8px";
-    // 色付け：公開鍵=青, 秘密鍵=赤
     if (type === "private") {
       downloadBtn.style.backgroundColor = "#e53935";
       downloadBtn.style.color = "#fff";
@@ -867,12 +1421,12 @@ async function exportKey(name, type) {
     exportArea.appendChild(downloadBtn);
   } catch (e) {
     console.error(e);
-    alert("エクスポートエラー: " + e);
+    alert(t('err_export_fail') + e);
   }
 }
 
 async function deleteKey(name) {
-  if (!confirm("鍵 " + name + " を削除してよろしいですか？")) return;
+  if (!confirm(t('confirm_delete', {name: name}))) return;
   try {
     await deleteKeyRecord(name);
   } catch (e) {
@@ -881,7 +1435,7 @@ async function deleteKey(name) {
   delete keyStore[name];
   let privIndex = importedPrivateKeys.findIndex(k => k.name === name);
   if (privIndex >= 0) { importedPrivateKeys.splice(privIndex, 1); }
-  alert("鍵 " + name + " を削除しました");
+  alert(t('alert_deleted', {name: name}));
   clearExportArea();
   refreshKeyList();
 }
@@ -889,11 +1443,11 @@ document.getElementById("generateKeyButton").addEventListener("click", async fun
   const keyName = document.getElementById("keyNameInput").value.trim();
   const regex = /^[A-Za-z0-9_\-@\.]+$/;
   if (!regex.test(keyName)) {
-    alert("鍵名が不正です。英数字、_, -, @, . のみ使用可能です。");
+    alert(t('alert_keyname_invalid'));
     return;
   }
   if (keyStore[keyName]) {
-    alert("同名の鍵が既に存在します");
+    alert(t('alert_keyname_exists'));
     return;
   }
   const algSelect = document.getElementById("keyAlgorithmSelect");
@@ -903,11 +1457,11 @@ document.getElementById("generateKeyButton").addEventListener("click", async fun
 
 // ── IndexedDB初期化（リセット） ──
 function resetDatabase() {
-  if (!confirm("本当に全ての鍵一覧を削除しますか？ この操作は元に戻せません。")) return;
+  if (!confirm(t('confirm_reset_db'))) return;
   if (db) { db.close(); }
   const req = indexedDB.deleteDatabase("PubliCryptDB");
   req.onsuccess = function() {
-    alert("鍵一覧が初期化されました。");
+    alert(t('alert_reset_done'));
     for (let key in keyStore) { delete keyStore[key]; }
     importedPrivateKeys.length = 0;
     clearExportArea();
@@ -916,24 +1470,21 @@ function resetDatabase() {
     initDB();
   };
   req.onerror = function(e) {
-    alert("鍵一覧の初期化中にエラーが発生しました。");
+    alert(t('alert_reset_err'));
   };
   req.onblocked = function(e) {
-    alert("他のタブで開いている可能性があります。");
+    alert(t('alert_blocked'));
   };
 }
 document.getElementById('resetDBBtn').addEventListener('click', resetDatabase);
 
-// ── ページ起動時: #pubkey= で公開鍵を読み込む（追加分） ──
-// 複数ブロックの表示/非表示切り替え用
+// ── ページ起動時: #pubkey= で公開鍵を読み込む ──
 function setBlocksDisplay(ids, displayStyle) {
   ids.forEach(id => {
-    // idかクラス名か判定（id優先）
     let el = document.getElementById(id);
     if (el) {
       el.style.display = displayStyle;
     } else {
-      // idがなければclassとして取得し全部切り替え
       let classElems = document.getElementsByClassName(id);
       for (let i = 0; i < classElems.length; i++) {
         classElems[i].style.display = displayStyle;
@@ -942,15 +1493,13 @@ function setBlocksDisplay(ids, displayStyle) {
   });
 }
 
-// --- ページ起動時: #pubkey= で公開鍵を読み込む＆UI非表示処理 ---
 async function tryLoadPubkeyFromHash() {
   if (location.hash.startsWith("#pubkey=")) {
     try {
-      // --- pubkey=とfp=のパース ---
-      let hash = location.hash.slice(1); // #除去
-      let params = new URLSearchParams(hash.replace(/&/g,'&')); // 疑似的に扱う
+      let hash = location.hash.slice(1);
+      let params = new URLSearchParams(hash.replace(/&/g,'&'));
       let b64url = params.get('pubkey');
-      let expectedFp = params.get('fp'); // 追加
+      let expectedFp = params.get('fp');
 
       if (!b64url) throw "公開鍵データが見つかりません";
       const b64 = base64UrlToBase64(b64url);
@@ -961,34 +1510,68 @@ async function tryLoadPubkeyFromHash() {
       const pubKey = await importPublicKeyFromXmlUnified(xml, "URL受信公開鍵");
       encryptionPublicKeys.push(pubKey);
 
-      // --- フィンガープリント検証 ---
       if (expectedFp && pubKey.fingerprint !== expectedFp) {
-        alert("[warning!] 公開鍵とフィンガープリントが一致しません！公開鍵またはフィンガープリントが改ざんされている可能性があります。\n"
-            + `共有されたフィンガープリント: ${expectedFp}\n公開鍵から算出されたフィンガープリント: ${pubKey.fingerprint}`);
+        alert(t('alert_url_pub_mismatch', {expected: expectedFp, actual: pubKey.fingerprint}));
       } else {
         const li = document.createElement('li');
-        li.innerHTML = `${pubKey.name} (${pubKey.type})<br>
-        <span style="font-size:0.91em;color:#777;">フィンガープリント: ${pubKey.fingerprint}</span>
-        <button style="margin-left:6px;font-size:0.9em;padding:2px 8px;" onclick="navigator.clipboard.writeText('${pubKey.fingerprint}')">Copy</button>`;
+        const keyInfoDiv = document.createElement('div');
+        keyInfoDiv.textContent = `${pubKey.name} (${pubKey.type})`;
+        const br = document.createElement('br');
+        const fpSpan = document.createElement('span');
+        fpSpan.style.fontSize = "0.91em";
+        fpSpan.style.color = "#777";
+        fpSpan.textContent = `${t('fingerprint')}: ${pubKey.fingerprint}`;
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = t('copy');
+        copyBtn.style.marginLeft = "6px";
+        copyBtn.style.fontSize = "0.9em";
+        copyBtn.style.padding = "2px 8px";
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(pubKey.fingerprint);
+            alert(t('copied'));
+        };
+        
+        li.appendChild(keyInfoDiv);
+        li.appendChild(br);
+        li.appendChild(fpSpan);
+        li.appendChild(copyBtn);
+        
         document.getElementById('pubKeyList').appendChild(li);
-        alert("URLから公開鍵を受信しました\n公開鍵とフィンガープリントは一致します(URLに改ざんはありません)\nフィンガープリント: " + pubKey.fingerprint);
+        alert(t('alert_url_pub_ok', {fp: pubKey.fingerprint}));
         setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
       }
     } catch (e) {
-      alert("URL公開鍵の読み込みに失敗しました: " + e);
+      alert(t('alert_url_load_err') + e);
     }
   }
 }
 
-
-
-// --- ページロード時にDB初期化・URL公開鍵読込
+// ── 初期化処理 ──
 window.addEventListener("load", async () => {
+  // 言語検出 (ブラウザ設定が 'ja' を含むなら日本語、frならフランス語、lb/deならルクセンブルク語(deからの類推含む)と仮定、それ以外は英語)
+  const userLang = (navigator.language || navigator.userLanguage).toLowerCase(); 
+  if (userLang.startsWith('ja')) {
+      currentLang = 'ja';
+  } else if (userLang.startsWith('fr')) {
+      currentLang = 'fr';
+  } else if (userLang.startsWith('lb')) {
+      currentLang = 'lb';
+  } else {
+      currentLang = 'en';
+  }
+  updateUIText(); // 初回翻訳反映
+
   await initDB();
   await tryLoadPubkeyFromHash();
 });
 
-// 末尾やwindow.load直後などでOK
+// 言語切り替えクリックイベント
+document.getElementById('lang-ja').addEventListener('click', () => changeLanguage('ja'));
+document.getElementById('lang-en').addEventListener('click', () => changeLanguage('en'));
+document.getElementById('lang-fr').addEventListener('click', () => changeLanguage('fr'));
+document.getElementById('lang-lb').addEventListener('click', () => changeLanguage('lb'));
+
+
 document.getElementById('resetUiBtn').addEventListener('click', async () => {
   resetUI();
 });
@@ -997,6 +1580,4 @@ document.getElementById('reloadURLBtn').addEventListener('click', async () => {
   await tryLoadPubkeyFromHash();
 });
 
-// chrome拡張機能のときはボタンを隠す
 window.addEventListener("DOMContentLoaded", hideResetUiButtonsInExtension);
-
