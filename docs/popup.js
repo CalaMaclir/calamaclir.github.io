@@ -494,7 +494,6 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'keyManagement',
   'exportArea',
   'resetSection',
-  'decrypt-block',
   'magicLinkSection'
 ];
 
@@ -1752,7 +1751,7 @@ async function checkMagicLinkRequest() {
     try {
       // 自動的にユニークな鍵名を生成 (例: Guest_20251224_1234)
       const now = new Date();
-      const keyName = `Guest_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours()}${now.getMinutes()}`;
+	  const keyName = `Guest_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}`;
       
       // 既存の鍵生成関数を利用
       await generateKeyPair(keyName, "EC"); // IndexedDBに保存される
