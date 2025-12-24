@@ -6,6 +6,8 @@ const AES_KEY_LENGTH = 256;
 const AES_IV_LENGTH = 12;
 const PUBKEY_SHARE_BASE_URL = "https://calamaclir.github.io/index.html";
 const HEADER_CHECK_SIZE = 1024 * 1024;
+const MAGIC_REQ_PARAM = "magic_req";
+const MAGIC_SENDER_PARAM = "sender";
 
 // ── QRコード用定数 ──
 const QR_CODE_CORRECT_LEVEL = QRCode.CorrectLevel.L;
@@ -102,7 +104,19 @@ const resources = {
     status_unknown: "データ不足",
     status_unencrypted: "非暗号化/不明な形式",
     status_unknown_type: "不明なエントリータイプ",
-    status_parse_err: "解析エラー"
+    status_parse_err: "解析エラー",
+
+    // マジックリンク用
+    magic_link_header: "マジックリンク (簡単鍵交換)",
+    magic_link_desc: "相手にこのURLを送るだけで、相手の公開鍵を簡単に受け取ることができます。",
+    btn_create_magic_link: "鍵交換リクエストURLを作成",
+    magic_req_prompt: "あなたの名前（相手に表示されます）を入力してください:",
+    wizard_title: "{sender} さんからの安全な通信リクエスト",
+    wizard_desc: "{sender} さんが、あなたと安全にファイルをやり取りするための準備を求めています。<br>下のボタンを押して、準備を開始してください。",
+    wizard_btn_start: "準備を開始する (鍵生成)",
+    wizard_step_done: "準備完了！",
+    wizard_reply_inst: "以下のURLをコピーして、{sender} さんに返信してください。",
+    btn_copy_reply_url: "返信URLをコピー"
   },
   en: {
     app_desc: "File encryption/decryption Chrome extension using public key cryptography.<br>Manage keys and encrypt/decrypt files easily.<br>Keys are stored in IndexedDB within the browser, and all processing is done locally.",
@@ -192,7 +206,19 @@ const resources = {
     status_unknown: "Insufficient Data",
     status_unencrypted: "Unencrypted/Unknown",
     status_unknown_type: "Unknown Entry",
-    status_parse_err: "Parse Error"
+    status_parse_err: "Parse Error",
+
+    // Magic Link
+    magic_link_header: "Magic Link (Easy Key Exchange)",
+    magic_link_desc: "Send this URL to someone to easily receive their public key.",
+    btn_create_magic_link: "Create Request URL",
+    magic_req_prompt: "Enter your name (shown to the recipient):",
+    wizard_title: "Secure Communication Request from {sender}",
+    wizard_desc: "{sender} wants to set up secure file exchange with you.<br>Click the button below to start.",
+    wizard_btn_start: "Start Setup (Generate Key)",
+    wizard_step_done: "Ready!",
+    wizard_reply_inst: "Copy the URL below and send it back to {sender}.",
+    btn_copy_reply_url: "Copy Reply URL"
   },
   fr: {
     app_desc: "Extension Chrome de chiffrement et déchiffrement de fichiers utilisant la cryptographie à clé publique.<br>Gérez vos clés et chiffrez/déchiffrez des fichiers facilement.<br>Les clés sont stockées dans IndexedDB dans votre navigateur, et tout le traitement est effectué localement.",
@@ -282,7 +308,19 @@ const resources = {
     status_unknown: "Données insuffisantes",
     status_unencrypted: "Non chiffré/Inconnu",
     status_unknown_type: "Entrée inconnue",
-    status_parse_err: "Erreur d'analyse"
+    status_parse_err: "Erreur d'analyse",
+
+    // Magic Link
+    magic_link_header: "Lien Magique (Échange de clés facile)",
+    magic_link_desc: "Envoyez cette URL pour recevoir facilement la clé publique de quelqu'un.",
+    btn_create_magic_link: "Créer une URL de demande",
+    magic_req_prompt: "Entrez votre nom (affiché au destinataire) :",
+    wizard_title: "Demande de communication sécurisée de {sender}",
+    wizard_desc: "{sender} souhaite établir un échange de fichiers sécurisé avec vous.<br>Cliquez sur le bouton ci-dessous pour commencer.",
+    wizard_btn_start: "Commencer (Générer une clé)",
+    wizard_step_done: "Prêt !",
+    wizard_reply_inst: "Copiez l'URL ci-dessous et renvoyez-la à {sender}.",
+    btn_copy_reply_url: "Copier l'URL de réponse"
   },
   lb: {
     app_desc: "Chrome-Extensioun fir Verschlësselung an Entschlësselung vun Dateien mat ëffentleche Schlësselen.<br>Verwalten Är Schlësselen an verschlësselt/entschlësselt Dateien einfach.<br>D'Schlëssel ginn an der IndexedDB an Ärem Browser gespäichert, an all Veraarbechtung gëtt lokal gemaach.",
@@ -372,7 +410,19 @@ const resources = {
     status_unknown: "Net genuch Daten",
     status_unencrypted: "Net verschlësselt/Onbekannt",
     status_unknown_type: "Onbekannten Entrée",
-    status_parse_err: "Analysfeeler"
+    status_parse_err: "Analysfeeler",
+
+    // Magic Link
+    magic_link_header: "Magic Link (Einfach Schlësselaustausch)",
+    magic_link_desc: "Schéckt dës URL un een fir einfach hiren ëffentleche Schlëssel ze kréien.",
+    btn_create_magic_link: "Ufro-URL erstellen",
+    magic_req_prompt: "Gitt Ären Numm an (gëtt dem Empfänger gewisen):",
+    wizard_title: "Sécher Kommunikatiounsufro vun {sender}",
+    wizard_desc: "{sender} wëll e sécheren Dateiaustausch mat Iech opbauen.<br>Klickt op de Knäppchen hei ënnen fir unzefänken.",
+    wizard_btn_start: "Ufänken (Schlëssel generéieren)",
+    wizard_step_done: "Pret!",
+    wizard_reply_inst: "Kopéiert d'URL hei ënnen a schéckt se zréck un {sender}.",
+    btn_copy_reply_url: "Äntwert URL kopéieren"
   }
 };
 
@@ -391,7 +441,8 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'keyManagement',
   'exportArea',
   'resetSection',
-  'decrypt-block'
+  'decrypt-block',
+  'magicLinkSection'
 ];
 
 // ── i18n ヘルパー ──
@@ -1529,9 +1580,147 @@ async function tryLoadPubkeyFromHash() {
   }
 }
 
+// ── マジックリンク機能 ──
+
+// 1. 送信者: リクエストURLを作成して表示
+function createMagicLink() {
+  const senderName = prompt(t('magic_req_prompt'), "Alice");
+  if (!senderName) return;
+
+  // 現在のベースURL (index.htmlまでのパス) を取得
+  const baseUrl = window.location.href.split('#')[0];
+  
+  // URLフラグメントを作成
+  const fragment = `${MAGIC_REQ_PARAM}=1&${MAGIC_SENDER_PARAM}=${encodeURIComponent(senderName)}`;
+  const fullUrl = `${baseUrl}#${fragment}`;
+
+  // エクスポートエリアに表示
+  const exportArea = document.getElementById("exportArea");
+  clearExportArea();
+  dispExportArea();
+
+  const h3 = document.createElement("h3");
+  h3.textContent = t('magic_link_header');
+  exportArea.appendChild(h3);
+
+  const p = document.createElement("p");
+  p.textContent = t('magic_link_desc');
+  exportArea.appendChild(p);
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = fullUrl;
+  input.readOnly = true;
+  input.style.width = "98%";
+  exportArea.appendChild(input);
+
+  const button = document.createElement("button");
+  button.textContent = t('btn_copy_url'); 
+  button.addEventListener("click", () => {
+      navigator.clipboard.writeText(fullUrl);
+      button.textContent = t('copied');
+  });
+  exportArea.appendChild(button);
+  
+  // QRコードも表示
+  const qrContainer = document.createElement("div");
+  qrContainer.style.marginTop = "16px";
+  new QRCode(qrContainer, {
+        text: fullUrl,
+        width: QR_CODE_SIZE,
+        height: QR_CODE_SIZE,
+        correctLevel: QR_CODE_CORRECT_LEVEL
+  });
+  exportArea.appendChild(qrContainer);
+}
+
+// 2. 受信者: ウィザード画面の制御
+async function checkMagicLinkRequest() {
+  if (!location.hash.includes(`${MAGIC_REQ_PARAM}=1`)) return;
+
+  // URLパラメータ解析
+  const hash = location.hash.slice(1);
+  const params = new URLSearchParams(hash);
+  const sender = params.get(MAGIC_SENDER_PARAM) || "Sender";
+
+  // 通常UIを隠し、ウィザードを表示
+  const mainApp = document.getElementById('main-app-container');
+  if(mainApp) mainApp.style.display = 'none';
+  
+  const wizard = document.getElementById('magicLinkWizard');
+  wizard.style.display = 'block';
+
+  // ウィザードのテキスト設定
+  document.getElementById('wizardTitle').textContent = t('wizard_title', {sender: sender});
+  document.getElementById('wizardDesc').innerHTML = t('wizard_desc', {sender: sender});
+  
+  const startBtn = document.getElementById('wizardStartBtn');
+  startBtn.textContent = t('wizard_btn_start');
+
+  startBtn.onclick = async () => {
+    // ボタン無効化 & スピナー
+    startBtn.disabled = true;
+    startBtn.textContent = t('processing');
+
+    try {
+      // 自動的にユニークな鍵名を生成 (例: Guest_20251224_1234)
+      const now = new Date();
+      const keyName = `Guest_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours()}${now.getMinutes()}`;
+      
+      // 既存の鍵生成関数を利用
+      await generateKeyPair(keyName, "EC"); // IndexedDBに保存される
+      
+      // 生成された鍵を取得してエクスポート用URLを作成
+      const keyPair = keyStore[keyName];
+      const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+      const xml = convertPublicJwkToXml(jwk);
+      const utf8 = new TextEncoder().encode(xml);
+      const b64 = btoa(String.fromCharCode(...utf8));
+      const b64url = base64ToBase64Url(b64);
+      const fingerprint = keyPair.fingerprint;
+
+      // 返信URL構築 (既存のPubliCryptが読み込める形式 #pubkey=...)
+      // 送信者がこのURLを開くと、自動的に鍵がインポートされる
+      const baseUrl = window.location.href.split('#')[0];
+      const replyUrl = `${baseUrl}#pubkey=${b64url}&fp=${fingerprint}`;
+
+      // 結果表示
+      document.getElementById('wizardStep1').style.display = 'none';
+      const resultArea = document.getElementById('wizardResult');
+      resultArea.style.display = 'block';
+      
+      document.getElementById('wizardDoneMsg').textContent = t('wizard_step_done');
+      document.getElementById('wizardReplyInst').textContent = t('wizard_reply_inst', {sender: sender});
+      
+      const replyInput = document.getElementById('wizardReplyUrl');
+      replyInput.value = replyUrl;
+      
+      const copyBtn = document.getElementById('wizardCopyBtn');
+      copyBtn.textContent = t('btn_copy_reply_url');
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(replyUrl);
+        copyBtn.textContent = t('copied');
+      };
+      
+      // QRコード
+      new QRCode(document.getElementById('wizardQr'), {
+        text: replyUrl,
+        width: 256,
+        height: 256,
+        correctLevel: QRCode.CorrectLevel.L
+      });
+
+    } catch (e) {
+      console.error(e);
+      alert("Error: " + e);
+      startBtn.disabled = false;
+    }
+  };
+}
+
 // ── 初期化処理 ──
 window.addEventListener("load", async () => {
-  // 言語検出 (ブラウザ設定が 'ja' を含むなら日本語、frならフランス語、lbならルクセンブルク語、それ以外は英語)
+  // 言語検出
   const userLang = (navigator.language || navigator.userLanguage).toLowerCase(); 
   if (userLang.startsWith('ja')) {
       currentLang = 'ja';
@@ -1542,18 +1731,18 @@ window.addEventListener("load", async () => {
   } else {
       currentLang = 'en';
   }
-  updateUIText(); // 初回翻訳反映
+  updateUIText(); 
 
   await initDB();
   await tryLoadPubkeyFromHash();
+  await checkMagicLinkRequest(); // マジックリンクチェック
 });
 
-// 言語切り替えクリックイベント
+// イベントリスナー
 document.getElementById('lang-ja').addEventListener('click', () => changeLanguage('ja'));
 document.getElementById('lang-en').addEventListener('click', () => changeLanguage('en'));
 document.getElementById('lang-fr').addEventListener('click', () => changeLanguage('fr'));
 document.getElementById('lang-lb').addEventListener('click', () => changeLanguage('lb'));
-
 
 document.getElementById('resetUiBtn').addEventListener('click', async () => {
   resetUI();
@@ -1562,5 +1751,10 @@ document.getElementById('reloadURLBtn').addEventListener('click', async () => {
   resetUI();
   await tryLoadPubkeyFromHash();
 });
+
+const magicLinkBtn = document.getElementById('createMagicLinkBtn');
+if(magicLinkBtn) {
+    magicLinkBtn.addEventListener('click', createMagicLink);
+}
 
 window.addEventListener("DOMContentLoaded", hideResetUiButtonsInExtension);
