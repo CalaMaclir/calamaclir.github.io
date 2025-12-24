@@ -11,7 +11,7 @@ const HEADER_CHECK_SIZE = 1024 * 1024;
 const QR_CODE_CORRECT_LEVEL = QRCode.CorrectLevel.L;
 const QR_CODE_SIZE = 256;
 
-// ── i18n リソース ──
+// ── i18n リソース (UI表示用) ──
 const resources = {
   ja: {
     app_desc: "公開鍵暗号化を利用したファイルの暗号化・復号Chrome拡張機能<br>鍵の管理と暗号化、復号の処理が手軽にできます<br>鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます",
@@ -68,14 +68,8 @@ const resources = {
     msg_enc_processing: "暗号化中: {name}",
     msg_dec_start: "復号処理を開始します...",
     msg_dec_processing: "復号中: {name}",
-    err_no_pubkey: "暗号化のために公開鍵がインポートされていません。",
-    err_no_valid_pub: "有効な公開鍵がありません。",
-    err_no_privkey: "復号のための秘密鍵が存在しません。",
-    err_invalid_file: "ファイルが不正です。",
-    err_unknown_entry: "不明な鍵エントリータイプです。",
-    err_dec_failed: "一致する秘密鍵が見つからないか、AES鍵の復号に失敗しました。",
-    err_aes_dec_fail: "AES復号に失敗しました: ",
-    err_dec_result_invalid: "復号結果が不正です。",
+    
+    // アラート用プレフィックス
     alert_ec_gen_done: "楕円曲線鍵ペア生成完了: {name}",
     alert_ec_gen_err: "楕円曲線鍵生成エラー: ",
     alert_unsupported_alg: "選択されたアルゴリズムはサポートされていません。",
@@ -87,7 +81,7 @@ const resources = {
     alert_keyname_invalid: "鍵名が不正です。英数字、_, -, @, . のみ使用可能です。",
     alert_keyname_exists: "同名の鍵が既に存在します",
     alert_url_pub_mismatch: "[warning!] 公開鍵とフィンガープリントが一致しません！\n共有されたフィンガープリント: {expected}\n公開鍵から算出されたフィンガープリント: {actual}",
-    alert_url_pub_ok: "URLから公開鍵を受信しました\nフィンガープリント: {fp}",
+    alert_url_pub_ok: "URLから公開鍵を受信しました\n公開鍵とフィンガープリントは一致します（公開鍵の改ざんはありません）\nフィンガープリント: {fp}",
     alert_url_load_err: "URL公開鍵の読み込みに失敗しました: ",
     
     label_pub_url: "{name} の 公開鍵URL",
@@ -103,6 +97,7 @@ const resources = {
     err_no_priv_exists: "秘密鍵が存在しません",
     err_no_pub_exists: "公開鍵が存在しません",
     err_export_fail: "エクスポートエラー: ",
+    err_aes_dec_fail: "AES復号に失敗しました: ",
     
     status_unknown: "データ不足",
     status_unencrypted: "非暗号化/不明な形式",
@@ -164,14 +159,7 @@ const resources = {
     msg_enc_processing: "Encrypting: {name}",
     msg_dec_start: "Starting decryption...",
     msg_dec_processing: "Decrypting: {name}",
-    err_no_pubkey: "No public key imported for encryption.",
-    err_no_valid_pub: "No valid public key available.",
-    err_no_privkey: "No private key available for decryption.",
-    err_invalid_file: "Invalid file.",
-    err_unknown_entry: "Unknown key entry type.",
-    err_dec_failed: "Matching private key not found or AES decryption failed.",
-    err_aes_dec_fail: "AES decryption failed: ",
-    err_dec_result_invalid: "Decryption result is invalid.",
+    
     alert_ec_gen_done: "EC Key Pair generated: {name}",
     alert_ec_gen_err: "EC Key Generation Error: ",
     alert_unsupported_alg: "Selected algorithm is not supported.",
@@ -183,7 +171,7 @@ const resources = {
     alert_keyname_invalid: "Invalid key name. Only Alphanumeric, _, -, @, . allowed.",
     alert_keyname_exists: "Key with the same name already exists",
     alert_url_pub_mismatch: "[warning!] Public key and fingerprint do not match!\nShared FP: {expected}\nCalculated FP: {actual}",
-    alert_url_pub_ok: "Received public key from URL\nFingerprint: {fp}",
+    alert_url_pub_ok: "Received public key from URL.\nPublic key and fingerprint match (No tampering detected).\nFingerprint: {fp}",
     alert_url_load_err: "Failed to load public key from URL: ",
     
     label_pub_url: "Public Key URL for {name}",
@@ -199,6 +187,7 @@ const resources = {
     err_no_priv_exists: "Private key does not exist",
     err_no_pub_exists: "Public key does not exist",
     err_export_fail: "Export error: ",
+    err_aes_dec_fail: "AES decryption failed: ",
     
     status_unknown: "Insufficient Data",
     status_unencrypted: "Unencrypted/Unknown",
@@ -260,14 +249,7 @@ const resources = {
     msg_enc_processing: "Chiffrement : {name}",
     msg_dec_start: "Démarrage du déchiffrement...",
     msg_dec_processing: "Déchiffrement : {name}",
-    err_no_pubkey: "Aucune clé publique importée pour le chiffrement.",
-    err_no_valid_pub: "Aucune clé publique valide disponible.",
-    err_no_privkey: "Aucune clé privée disponible pour le déchiffrement.",
-    err_invalid_file: "Fichier invalide.",
-    err_unknown_entry: "Type d'entrée de clé inconnu.",
-    err_dec_failed: "Clé privée correspondante introuvable ou échec du déchiffrement AES.",
-    err_aes_dec_fail: "Échec du déchiffrement AES : ",
-    err_dec_result_invalid: "Le résultat du déchiffrement est invalide.",
+    
     alert_ec_gen_done: "Paire de clés EC générée : {name}",
     alert_ec_gen_err: "Erreur de génération de clé EC : ",
     alert_unsupported_alg: "L'algorithme sélectionné n'est pas supporté.",
@@ -279,7 +261,7 @@ const resources = {
     alert_keyname_invalid: "Nom de clé invalide. Seuls Alphanumérique, _, -, @, . sont autorisés.",
     alert_keyname_exists: "Une clé portant le même nom existe déjà",
     alert_url_pub_mismatch: "[Attention !] La clé publique et l'empreinte ne correspondent pas !\nEmpreinte partagée : {expected}\nEmpreinte calculée : {actual}",
-    alert_url_pub_ok: "Clé publique reçue depuis l'URL\nEmpreinte : {fp}",
+    alert_url_pub_ok: "Clé publique reçue depuis l'URL.\nLa clé publique et l'empreinte correspondent (Aucune falsification détectée).\nEmpreinte : {fp}",
     alert_url_load_err: "Échec du chargement de la clé publique depuis l'URL : ",
     
     label_pub_url: "URL de la clé publique pour {name}",
@@ -295,6 +277,7 @@ const resources = {
     err_no_priv_exists: "La clé privée n'existe pas",
     err_no_pub_exists: "La clé publique n'existe pas",
     err_export_fail: "Erreur d'exportation : ",
+    err_aes_dec_fail: "Échec du déchiffrement AES : ",
     
     status_unknown: "Données insuffisantes",
     status_unencrypted: "Non chiffré/Inconnu",
@@ -356,14 +339,7 @@ const resources = {
     msg_enc_processing: "Verschlësselen: {name}",
     msg_dec_start: "Entschlësselung starten...",
     msg_dec_processing: "Entschlësselen: {name}",
-    err_no_pubkey: "Kee ëffentleche Schlëssel fir Verschlësselung importéiert.",
-    err_no_valid_pub: "Kee gültegen ëffentleche Schlëssel verfügbar.",
-    err_no_privkey: "Kee private Schlëssel fir Entschlësselung verfügbar.",
-    err_invalid_file: "Ongülteg Datei.",
-    err_unknown_entry: "Onbekannte Schlëssel-Entréestyp.",
-    err_dec_failed: "Passende private Schlëssel net fonnt oder AES Entschlësselung feelgeschloen.",
-    err_aes_dec_fail: "AES Entschlësselung feelgeschloen: ",
-    err_dec_result_invalid: "Entschlësselungsresultat ass ongülteg.",
+    
     alert_ec_gen_done: "EC Schlësselpaar generéiert: {name}",
     alert_ec_gen_err: "EC Schlëssel Generatiounsfeeler: ",
     alert_unsupported_alg: "Ausgewielten Algorithmus gëtt net ënnerstëtzt.",
@@ -375,7 +351,7 @@ const resources = {
     alert_keyname_invalid: "Ongültege Schlësselnumm. Nëmmen Alphanumeresch, _, -, @, . erlaabt.",
     alert_keyname_exists: "Schlëssel mam selwechten Numm existéiert schonn",
     alert_url_pub_mismatch: "[Opgepasst!] Ëffentleche Schlëssel a Fangerofdrock stëmmen net iwwerenee!\nGedeelten FP: {expected}\nBerechent FP: {actual}",
-    alert_url_pub_ok: "Ëffentleche Schlëssel vun URL kritt\nFangerofdrock: {fp}",
+    alert_url_pub_ok: "Ëffentleche Schlëssel vun URL kritt.\nËffentleche Schlëssel a Fangerofdrock stëmmen iwwereneen (Keng Manipulatioun festgestallt).\nFangerofdrock: {fp}",
     alert_url_load_err: "Feeler beim Lueden vum ëffentleche Schlëssel vun der URL: ",
     
     label_pub_url: "Ëffentleche Schlëssel URL fir {name}",
@@ -391,6 +367,7 @@ const resources = {
     err_no_priv_exists: "Privaten Schlëssel existéiert net",
     err_no_pub_exists: "Ëffentleche Schlëssel existéiert net",
     err_export_fail: "Exportfeeler: ",
+    err_aes_dec_fail: "AES Entschlësselung feelgeschloen: ",
     
     status_unknown: "Net genuch Daten",
     status_unencrypted: "Net verschlësselt/Onbekannt",
@@ -649,7 +626,7 @@ async function importPublicKeyFromXmlEC(xmlString, fileName) {
   const y = getXmlTagContent(xmlDoc, "Y");
   const curve = getXmlTagContent(xmlDoc, "Curve") || DEFAULT_EC_CURVE;
   if (!x || !y) {
-    throw new Error("公開鍵XMLに X または Y が見つかりません");
+    throw new Error("X or Y not found in Public Key XML");
   }
   const jwk = { kty: "EC", crv: curve, x: x, y: y, ext: true };
   const cryptoKey = await crypto.subtle.importKey(
@@ -670,7 +647,7 @@ async function importPrivateKeyFromXmlEC(xmlString, fileName) {
   const d = getXmlTagContent(xmlDoc, "D");
   const curve = getXmlTagContent(xmlDoc, "Curve") || DEFAULT_EC_CURVE;
   if (!x || !y || !d) {
-    throw new Error("秘密鍵XMLに必要な要素が見つかりません");
+    throw new Error("Required elements not found in Private Key XML");
   }
   const jwkPrivate = { kty: "EC", crv: curve, x: x, y: y, d: d, ext: true };
   const privateCryptoKey = await crypto.subtle.importKey(
@@ -696,7 +673,7 @@ async function importPublicKeyFromXmlUnified(xmlString, fileName) {
   if (rootTag === "ECKeyValue") {
     return await importPublicKeyFromXmlEC(xmlString, fileName);
   } else {
-    throw new Error("公開鍵XMLの形式が不明です");
+    throw new Error("Unknown Public Key XML format");
   }
 }
 async function importPrivateKeyFromXmlUnified(xmlString, fileName) {
@@ -706,7 +683,7 @@ async function importPrivateKeyFromXmlUnified(xmlString, fileName) {
   if (rootTag === "ECKeyValue") {
     return await importPrivateKeyFromXmlEC(xmlString, fileName);
   } else {
-    throw new Error("秘密鍵XMLの形式が不明です");
+    throw new Error("Unknown Private Key XML format");
   }
 }
 
@@ -929,7 +906,7 @@ async function encryptFile(file) {
   const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
 
   if (encryptionPublicKeys.length === 0) {
-    throw new Error(t('err_no_pubkey'));
+    throw new Error("No public key imported for encryption.");
   }
   const uniquePublicKeys = [];
   const seen = new Set();
@@ -977,7 +954,7 @@ async function encryptFile(file) {
     }
   }
   if (entries.length === 0) {
-    throw new Error(t('err_no_valid_pub'));
+    throw new Error("No valid public key available.");
   }
   const fileBuffer = new Uint8Array(await file.arrayBuffer());
   const fileNameBytes = encoder.encode(file.name);
@@ -1014,13 +991,13 @@ async function encryptFile(file) {
 async function decryptFile(file) {
   try {
     if (importedPrivateKeys.length === 0) {
-      throw new Error(t('err_no_privkey'));
+      throw new Error("No private key available for decryption.");
     }
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
     const view = new DataView(fileBuffer.buffer);
     let offset = 0;
     if (fileBuffer.length < 4) {
-      throw new Error(t('err_invalid_file'));
+      throw new Error("Invalid file.");
     }
     const entryCount = readInt32LE(view, offset);
     offset += 4;
@@ -1044,11 +1021,11 @@ async function decryptFile(file) {
         offset += wrapLen;
         headerEntries.push({ type: 1, recipientId: recipientId, ephemeralPub: ephemeralPub, wrappingOutput: wrappingOutput });
       } else {
-        throw new Error(t('err_unknown_entry'));
+        throw new Error("Unknown key entry type.");
       }
     }
     if (offset + AES_IV_LENGTH > fileBuffer.length) {
-      throw new Error(t('err_invalid_file'));
+      throw new Error("Invalid file.");
     }
     const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH);
     offset += AES_IV_LENGTH;
@@ -1089,23 +1066,23 @@ async function decryptFile(file) {
       if (found) break;
     }
     if (!found || !aesKeyRaw) {
-      throw new Error(t('err_dec_failed'));
+      throw new Error("Matching private key not found or AES decryption failed.");
     }
     const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
     let payloadPlainBuffer;
     try {
       payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
     } catch (err) {
-      throw new Error(t('err_aes_dec_fail') + err.message);
+      throw new Error("AES decryption failed: " + err.message);
     }
     const payloadPlain = new Uint8Array(payloadPlainBuffer);
     const dv = new DataView(payloadPlain.buffer);
     if (payloadPlain.length < 4) {
-      throw new Error(t('err_dec_result_invalid'));
+      throw new Error("Decryption result is invalid.");
     }
     const fnameLen = dv.getInt32(0, true);
     if (4 + fnameLen > payloadPlain.length) {
-      throw new Error(t('err_dec_result_invalid'));
+      throw new Error("Decryption result is invalid.");
     }
     const fnameBytes = payloadPlain.slice(4, 4 + fnameLen);
     const originalFileName = decoder.decode(fnameBytes);
@@ -1215,7 +1192,10 @@ async function exportPubkeyUrl(name) {
     const utf8 = new TextEncoder().encode(xml);
     const b64 = btoa(String.fromCharCode(...utf8));
     const b64url = base64ToBase64Url(b64);
+    
+    // 【確認】フィンガープリント取得
     const fingerprint = keyPair.fingerprint;
+    // 【確認】URLパラメータに fp を付与
     const url = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
 
     const exportArea = document.getElementById("exportArea");
@@ -1499,9 +1479,11 @@ async function tryLoadPubkeyFromHash() {
       let hash = location.hash.slice(1);
       let params = new URLSearchParams(hash.replace(/&/g,'&'));
       let b64url = params.get('pubkey');
+      
+      // 【確認】検証用フィンガープリント取得
       let expectedFp = params.get('fp');
 
-      if (!b64url) throw "公開鍵データが見つかりません";
+      if (!b64url) throw "Public key data not found";
       const b64 = base64UrlToBase64(b64url);
       const bin = atob(b64);
       const uint8 = new Uint8Array(bin.length);
@@ -1510,6 +1492,7 @@ async function tryLoadPubkeyFromHash() {
       const pubKey = await importPublicKeyFromXmlUnified(xml, "URL受信公開鍵");
       encryptionPublicKeys.push(pubKey);
 
+      // 【確認】フィンガープリントの検証ロジック
       if (expectedFp && pubKey.fingerprint !== expectedFp) {
         alert(t('alert_url_pub_mismatch', {expected: expectedFp, actual: pubKey.fingerprint}));
       } else {
@@ -1548,7 +1531,7 @@ async function tryLoadPubkeyFromHash() {
 
 // ── 初期化処理 ──
 window.addEventListener("load", async () => {
-  // 言語検出 (ブラウザ設定が 'ja' を含むなら日本語、frならフランス語、lb/deならルクセンブルク語(deからの類推含む)と仮定、それ以外は英語)
+  // 言語検出 (ブラウザ設定が 'ja' を含むなら日本語、frならフランス語、lbならルクセンブルク語、それ以外は英語)
   const userLang = (navigator.language || navigator.userLanguage).toLowerCase(); 
   if (userLang.startsWith('ja')) {
       currentLang = 'ja';
