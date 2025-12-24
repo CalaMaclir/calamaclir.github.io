@@ -285,92 +285,119 @@
     <div class="lang-switch">
         <span id="lang-ja">JP</span> / <span id="lang-en">EN</span> / <span id="lang-fr">FR</span> / <span id="lang-lb">LB</span>
     </div>
-    <h1>PubliCrypt</h1>
-    <div data-i18n="app_desc">
-      </div>
-    <div style="margin-bottom:16px;">
-      <a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank" data-i18n="link_manual">簡単な説明はこちらをごらんください</a>
+
+    <div id="magicLinkWizard" style="display:none; text-align:center; padding: 20px;">
+        <h2 id="wizardTitle" style="color:var(--accent);"></h2>
+        <p id="wizardDesc" style="margin: 20px 0; font-size:1.1em;"></p>
+        
+        <div id="wizardStep1">
+            <button id="wizardStartBtn" style="font-size:1.2em; padding:15px 30px; width:100%; max-width:300px;"></button>
+        </div>
+
+        <div id="wizardResult" style="display:none; margin-top:20px; background:#f0f4c3; padding:20px; border-radius:14px;">
+            <h3 id="wizardDoneMsg" style="color:#2e7d32;"></h3>
+            <p id="wizardReplyInst"></p>
+            <input type="text" id="wizardReplyUrl" readonly style="width:90%; padding:10px; margin-bottom:10px;">
+            <br>
+            <button id="wizardCopyBtn"></button>
+            <div id="wizardQr" style="margin-top:20px; display:flex; justify-content:center;"></div>
+        </div>
     </div>
-    <div id="spinner" data-i18n="processing">処理中...</div>
 
-    <section id="fileSection">
-      <h2 data-i18n="target_files_header">暗号化／復号の対象ファイル</h2>
-      <div id="fileDropArea" data-i18n="drop_area_text">ここにファイルをドロップ</div>
-      <input type="file" id="fileSelect" multiple>
-      <ul id="fileList"></ul>
+    <div id="main-app-container">
+        <h1>PubliCrypt</h1>
+        <div data-i18n="app_desc">
+        </div>
+        <div style="margin-bottom:16px;">
+        <a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank" data-i18n="link_manual">簡単な説明はこちらをごらんください</a>
+        </div>
+        <div id="spinner" data-i18n="processing">処理中...</div>
 
-      <div class="crypto-row">
+        <section id="fileSection">
+        <h2 data-i18n="target_files_header">暗号化／復号の対象ファイル</h2>
+        <div id="fileDropArea" data-i18n="drop_area_text">ここにファイルをドロップ</div>
+        <input type="file" id="fileSelect" multiple>
+        <ul id="fileList"></ul>
+
+        <div class="crypto-row">
+            <div class="key-section">
+            <h2 data-i18n="encrypt_title">暗号化</h2>
+            <div id="pubkey-file-select-block">
+                <div data-i18n="encrypt_instruction">暗号化で使用する公開鍵のファイルを読み込んでください</div>
+                <h3 data-i18n="pubkey_select_header">公開鍵選択 (.pubkey XML)</h3>
+                <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+            </div>
+            <button id="encryptBtn" data-i18n="encrypt_btn">暗号化</button>
+            <ul id="pubKeyList"></ul>
+            </div>
+
+            <div class="decrypt-block">
+                <div class="key-section">
+                <h2 data-i18n="decrypt_title">復号</h2>
+                <div data-i18n="decrypt_instruction">秘密鍵は鍵一覧から自動選択されます</div>
+                <button id="decryptBtn" data-i18n="decrypt_btn">復号</button>
+                </div>
+            </div>
+        </div>
+        </section>
+
+        <section id="privKeyImport">
         <div class="key-section">
-          <h2 data-i18n="encrypt_title">暗号化</h2>
-		  <div id="pubkey-file-select-block">
-		    <div data-i18n="encrypt_instruction">暗号化で使用する公開鍵のファイルを読み込んでください</div>
-		    <h3 data-i18n="pubkey_select_header">公開鍵選択 (.pubkey XML)</h3>
-		    <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
-		  </div>
-		  <button id="encryptBtn" data-i18n="encrypt_btn">暗号化</button>
-          <ul id="pubKeyList"></ul>
+            <h2 data-i18n="privkey_import_header">秘密鍵インポート (.pvtkey XML)</h2>
+            <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
+            <ul id="privKeyList"></ul>
         </div>
+        </section>
 
-        <div class="decrypt-block">
-	        <div class="key-section">
-	          <h2 data-i18n="decrypt_title">復号</h2>
-	          <div data-i18n="decrypt_instruction">秘密鍵は鍵一覧から自動選択されます</div>
-	          <button id="decryptBtn" data-i18n="decrypt_btn">復号</button>
-	        </div>
+        <section id="keyManagement">
+        <div class="key-section">
+            <h2 data-i18n="key_mgmt_header">鍵管理</h2>
+            <div style="margin-bottom:10px;">
+            <label for="keyNameInput" data-i18n="key_name_label">鍵名 (英数字、_, -, @, . のみ): </label>
+            <input type="text" id="keyNameInput">
+            <select id="keyAlgorithmSelect">
+                <option value="EC" data-i18n="algo_ec">楕円曲線 (ECDH)</option>
+            </select>
+            <button id="generateKeyButton" data-i18n="generate_btn">鍵生成</button>
+            </div>
+            <div>
+            <h3 data-i18n="key_list_header">鍵一覧</h3>
+            <table id="keyTable">
+                <thead>
+                <tr>
+                    <th data-i18n="col_keyname">鍵名</th>
+                    <th data-i18n="col_type">種別</th>
+                    <th data-i18n="col_info">鍵情報</th>
+                    <th data-i18n="col_operation">操作</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            </div>
         </div>
-      </div>
-    </section>
+        </section>
 
-    <section id="privKeyImport">
-      <div class="key-section">
-        <h2 data-i18n="privkey_import_header">秘密鍵インポート (.pvtkey XML)</h2>
-        <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
-        <ul id="privKeyList"></ul>
-      </div>
-    </section>
+        <section id="magicLinkSection" class="key-section" style="border-color: #5c6bc0; background: #e8eaf6;">
+          <h2 data-i18n="magic_link_header">マジックリンク (簡単鍵交換)</h2>
+          <p data-i18n="magic_link_desc" style="margin-bottom:12px;">相手にURLを送るだけで、相手の公開鍵を簡単に受け取ることができます。</p>
+          <button id="createMagicLinkBtn" data-i18n="btn_create_magic_link">鍵交換リクエストURLを作成</button>
+        </section>
 
-    <section id="keyManagement">
-      <div class="key-section">
-        <h2 data-i18n="key_mgmt_header">鍵管理</h2>
-        <div style="margin-bottom:10px;">
-          <label for="keyNameInput" data-i18n="key_name_label">鍵名 (英数字、_, -, @, . のみ): </label>
-          <input type="text" id="keyNameInput">
-          <select id="keyAlgorithmSelect">
-            <option value="EC" data-i18n="algo_ec">楕円曲線 (ECDH)</option>
-          </select>
-          <button id="generateKeyButton" data-i18n="generate_btn">鍵生成</button>
+        <div id="exportArea">
+        <div id="qrcode" style="margin-top:16px;"></div>
         </div>
-        <div>
-          <h3 data-i18n="key_list_header">鍵一覧</h3>
-          <table id="keyTable">
-            <thead>
-              <tr>
-                <th data-i18n="col_keyname">鍵名</th>
-                <th data-i18n="col_type">種別</th>
-                <th data-i18n="col_info">鍵情報</th>
-                <th data-i18n="col_operation">操作</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <section id="resetSection" class="warning-section">
+        <h2 data-i18n="warning_header">取り扱い注意！</h2>
+        <p data-i18n="warning_text">
+            以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
+            この操作は元に戻せませんので、十分に注意してください。
+        </p>
+        <button id="resetDBBtn" data-i18n="reset_db_btn">鍵一覧初期化</button>
+        </section>
+        <div id="UI-init">
+            <button id="resetUiBtn" style="background:#777;color:#fff;margin-top:24px;" data-i18n="reset_ui_btn">画面を初期化する</button>
+            <button id="reloadURLBtn" style="background:#777;color:#fff;margin-top:24px;" data-i18n="reload_url_btn">URL公開鍵を読み直す</button>
         </div>
-      </div>
-    </section>
-
-    <div id="exportArea">
-    <div id="qrcode" style="margin-top:16px;"></div>
-    </div>
-    <section id="resetSection" class="warning-section">
-      <h2 data-i18n="warning_header">取り扱い注意！</h2>
-      <p data-i18n="warning_text">
-        以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
-        この操作は元に戻せませんので、十分に注意してください。
-      </p>
-      <button id="resetDBBtn" data-i18n="reset_db_btn">鍵一覧初期化</button>
-    </section>
-	<div id="UI-init">
-		<button id="resetUiBtn" style="background:#777;color:#fff;margin-top:24px;" data-i18n="reset_ui_btn">画面を初期化する</button>
-		<button id="reloadURLBtn" style="background:#777;color:#fff;margin-top:24px;" data-i18n="reload_url_btn">URL公開鍵を読み直す</button>
     </div>
   </main>
   <script src="qrcode.min.js"></script>
