@@ -7,12 +7,8 @@ const AES_IV_LENGTH = 12;
 const PUBKEY_SHARE_BASE_URL = "https://calamaclir.github.io/index.html";
 const HEADER_CHECK_SIZE = 1024 * 1024;
 const MAGIC_REQ_PARAM = "magic_req";
-const MAGIC_SENDER_PARAM = "sender";
+const MAGIC_SENDER_PARAM = "sender"; // ※パラメータとしては残すが、値は使用しない
 const DECRYPT_MODE_HASH = "decrypt_mode";
-
-// ── QRコード用定数 ──
-const QR_CODE_CORRECT_LEVEL = QRCode.CorrectLevel.L;
-const QR_CODE_SIZE = 256;
 
 // ── i18n リソース (UI表示用) ──
 const resources = {
@@ -50,7 +46,7 @@ const resources = {
     copy: "Copy",
     copied: "コピーしました",
     export_pub: "公開鍵をエクスポート",
-    share_url: "公開鍵をURL/QRコードで共有",
+    share_url: "公開鍵をURLで共有",
     export_priv: "秘密鍵をエクスポート",
     delete: "削除",
     checking: "確認中...",
@@ -88,7 +84,7 @@ const resources = {
     alert_url_load_err: "URL公開鍵の読み込みに失敗しました: ",
     
     label_pub_url: "{name} の 公開鍵URL",
-    label_pub_url_desc: "公開鍵をURL/QRコードで共有できます",
+    label_pub_url_desc: "このURLを相手に送ることで、公開鍵を共有できます",
     btn_copy_url: "公開鍵のURLをコピー",
     
     header_export_priv: "{name} の 秘密鍵をエクスポートする",
@@ -99,7 +95,7 @@ const resources = {
     
     err_no_priv_exists: "秘密鍵が存在しません",
     err_no_pub_exists: "公開鍵が存在しません",
-    err_export_fail: "エクスポートエラー: ",
+    err_export_fail: "Export error: ",
     err_aes_dec_fail: "AES復号に失敗しました: ",
     
     status_unknown: "データ不足",
@@ -107,19 +103,20 @@ const resources = {
     status_unknown_type: "不明なエントリータイプ",
     status_parse_err: "解析エラー",
 
-    // マジックリンク用
+    // マジックリンク用 (修正版)
     magic_link_header: "マジックリンク (簡単鍵交換)",
     magic_link_desc: "相手にこのURLを送るだけで、相手の公開鍵を簡単に受け取ることができます。",
     btn_create_magic_link: "鍵交換リクエストURLを作成",
-    magic_req_prompt: "あなたの名前（相手に表示されます）を入力してください:",
-    wizard_title: "{sender} さんからの安全な通信リクエスト",
-    wizard_desc: "{sender} さんが、あなたと安全にファイルをやり取りするための準備を求めています。<br>下のボタンを押して、準備を開始してください。",
+    
+    // ウィザード画面用 (汎用化)
+    wizard_title: "安全な通信リクエスト",
+    wizard_desc: "安全なファイル共有の準備リクエストが届きました。<br>下のボタンを押して、準備を開始してください。",
     wizard_btn_start: "準備を開始する (鍵生成)",
     wizard_step_done: "準備完了！",
-    wizard_reply_inst: "以下のURLをコピーして、{sender} さんに返信してください。",
+    wizard_reply_inst: "以下のURLをコピーして、相手に返信してください。",
     btn_copy_reply_url: "返信URLをコピー",
 
-    // 復号誘導モード
+    // 復号誘導モード用
     decrypt_mode_title: "ファイルを受け取った方へ",
     decrypt_mode_desc: "以下の手順で、暗号化されたファイルを元に戻します（復号）。<br>1. 送られてきた <b>.crypted</b> ファイルを下の枠にドロップしてください。<br>2. 「復号」ボタンを押すと、元のファイルがダウンロードされます。",
     
@@ -128,8 +125,9 @@ const resources = {
     enc_success_msg: "ファイル ({count}件) の暗号化が完了し、ダウンロードが開始されました。",
     enc_next_step_title: "相手への送信メッセージ案",
     enc_next_step_desc: "暗号化したファイルをメール等で送る際、以下のメッセージを添えると相手が迷わずに復号できます。",
-    email_template_body: "{name}さん\n\n暗号化したファイルを送ります。\n添付のファイルをダウンロードした後、以下のリンクを開いてファイルをドラッグ＆ドロップしてください。\n自動的にあなたの秘密鍵を使って復号されます。\n\n復号ツール: {url}",
-    btn_copy_email: "メッセージをコピー"
+    email_template_subject: "暗号化ファイルの送付",
+    email_template_body: "暗号化したファイルを送ります。\n添付のファイルをダウンロードした後、以下のリンクを開いてファイルをドラッグ＆ドロップしてください。\n自動的にあなたの秘密鍵を使って復号されます。\n\n復号ツール: {url}",
+    btn_copy_email: "メッセージをコピー",
   },
   en: {
     app_desc: "File encryption/decryption Chrome extension using public key cryptography.<br>Manage keys and encrypt/decrypt files easily.<br>Keys are stored in IndexedDB within the browser, and all processing is done locally.",
@@ -165,7 +163,7 @@ const resources = {
     copy: "Copy",
     copied: "Copied",
     export_pub: "Export Public Key",
-    share_url: "Share via URL/QR",
+    share_url: "Share via URL",
     export_priv: "Export Private Key",
     delete: "Delete",
     checking: "Checking...",
@@ -202,7 +200,7 @@ const resources = {
     alert_url_load_err: "Failed to load public key from URL: ",
     
     label_pub_url: "Public Key URL for {name}",
-    label_pub_url_desc: "You can share the public key via URL or QR Code",
+    label_pub_url_desc: "You can share the public key via URL",
     btn_copy_url: "Copy URL",
     
     header_export_priv: "Export Private Key for {name}",
@@ -225,24 +223,26 @@ const resources = {
     magic_link_header: "Magic Link (Easy Key Exchange)",
     magic_link_desc: "Send this URL to someone to easily receive their public key.",
     btn_create_magic_link: "Create Request URL",
-    magic_req_prompt: "Enter your name (shown to the recipient):",
-    wizard_title: "Secure Communication Request from {sender}",
-    wizard_desc: "{sender} wants to set up secure file exchange with you.<br>Click the button below to start.",
+    
+    // Wizard (Generic)
+    wizard_title: "Secure Communication Request",
+    wizard_desc: "You received a request to set up secure file exchange.<br>Click the button below to start.",
     wizard_btn_start: "Start Setup (Generate Key)",
     wizard_step_done: "Ready!",
-    wizard_reply_inst: "Copy the URL below and send it back to {sender}.",
+    wizard_reply_inst: "Copy the URL below and send it back to the sender.",
     btn_copy_reply_url: "Copy Reply URL",
 
     // Decrypt Mode
     decrypt_mode_title: "For Recipients",
-    decrypt_mode_desc: "Follow these steps to decrypt the file:<br>1. Drop the <b>.crypted</b> file here.<br>2. Click 'Decrypt' to download the original file.",
+    decrypt_mode_desc: "To decrypt the file:<br>1. Drop the received <b>.crypted</b> file into the box below.<br>2. Click 'Decrypt' to download the original file.",
     
-    // Enc Success
+    // Encryption Success
     enc_success_title: "Encryption Complete",
-    enc_success_msg: "Successfully encrypted {count} file(s). Download started.",
-    enc_next_step_title: "Draft Message for Recipient",
-    enc_next_step_desc: "Copy this message when sending the file to help the recipient decrypt it easily.",
-    email_template_body: "Hi {name},\n\nI'm sending you an encrypted file.\nAfter downloading the attached file, open the link below and drop the file there.\nIt will be decrypted automatically using your private key.\n\nDecryption Tool: {url}",
+    enc_success_msg: "Encryption finished for {count} file(s). Download started.",
+    enc_next_step_title: "Message Template for Recipient",
+    enc_next_step_desc: "When sending the encrypted file, include this message to help the recipient decrypt it easily.",
+    email_template_subject: "Encrypted File Attached",
+    email_template_body: "I am sending you an encrypted file.\nPlease download the attached file, then open the link below and drop the file there.\nIt will be decrypted using your private key automatically.\n\nDecryption Tool: {url}",
     btn_copy_email: "Copy Message"
   },
   fr: {
@@ -279,7 +279,7 @@ const resources = {
     copy: "Copier",
     copied: "Copié",
     export_pub: "Exporter la clé publique",
-    share_url: "Partager via URL/QR",
+    share_url: "Partager via URL",
     export_priv: "Exporter la clé privée",
     delete: "Supprimer",
     checking: "Vérification...",
@@ -316,7 +316,7 @@ const resources = {
     alert_url_load_err: "Échec du chargement de la clé publique depuis l'URL : ",
     
     label_pub_url: "URL de la clé publique pour {name}",
-    label_pub_url_desc: "Vous pouvez partager la clé publique via URL ou QR Code",
+    label_pub_url_desc: "Vous pouvez partager la clé publique via URL",
     btn_copy_url: "Copier l'URL",
     
     header_export_priv: "Exporter la clé privée pour {name}",
@@ -339,24 +339,26 @@ const resources = {
     magic_link_header: "Lien Magique (Échange de clés facile)",
     magic_link_desc: "Envoyez cette URL pour recevoir facilement la clé publique de quelqu'un.",
     btn_create_magic_link: "Créer une URL de demande",
-    magic_req_prompt: "Entrez votre nom (affiché au destinataire) :",
-    wizard_title: "Demande de communication sécurisée de {sender}",
-    wizard_desc: "{sender} souhaite établir un échange de fichiers sécurisé avec vous.<br>Cliquez sur le bouton ci-dessous pour commencer.",
+    
+    // Wizard (Generic)
+    wizard_title: "Demande de communication sécurisée",
+    wizard_desc: "Vous avez reçu une demande pour configurer un échange de fichiers sécurisé.<br>Cliquez sur le bouton ci-dessous pour commencer.",
     wizard_btn_start: "Commencer (Générer une clé)",
     wizard_step_done: "Prêt !",
-    wizard_reply_inst: "Copiez l'URL ci-dessous et renvoyez-la à {sender}.",
+    wizard_reply_inst: "Copiez l'URL ci-dessous et renvoyez-la à l'expéditeur.",
     btn_copy_reply_url: "Copier l'URL de réponse",
 
     // Decrypt Mode
-    decrypt_mode_title: "Pour les destinataires",
-    decrypt_mode_desc: "Suivez ces étapes pour déchiffrer :<br>1. Déposez le fichier <b>.crypted</b> ici.<br>2. Cliquez sur 'Déchiffrer' pour télécharger le fichier original.",
+    decrypt_mode_title: "Pour le destinataire",
+    decrypt_mode_desc: "Pour déchiffrer :<br>1. Déposez le fichier <b>.crypted</b> reçu dans la zone ci-dessous.<br>2. Cliquez sur « Déchiffrer » pour télécharger le fichier original.",
     
-    // Enc Success
+    // Encryption Success
     enc_success_title: "Chiffrement terminé",
-    enc_success_msg: "{count} fichier(s) chiffré(s). Téléchargement commencé.",
-    enc_next_step_title: "Projet de message pour le destinataire",
-    enc_next_step_desc: "Copiez ce message lorsque vous envoyez le fichier pour aider le destinataire.",
-    email_template_body: "Bonjour {name},\n\nJe vous envoie un fichier chiffré.\nAprès avoir téléchargé le fichier joint, ouvrez le lien ci-dessous et déposez-y le fichier.\nIl sera déchiffré automatiquement avec votre clé privée.\n\nOutil de déchiffrement : {url}",
+    enc_success_msg: "Chiffrement terminé pour {count} fichier(s). Le téléchargement a commencé.",
+    enc_next_step_title: "Modèle de message pour le destinataire",
+    enc_next_step_desc: "Lorsque vous envoyez le fichier chiffré, incluez ce message pour aider le destinataire.",
+    email_template_subject: "Fichier chiffré joint",
+    email_template_body: "Je vous envoie un fichier chiffré.\nTéléchargez le fichier joint, puis ouvrez le lien ci-dessous et déposez-y le fichier.\nIl sera déchiffré automatiquement avec votre clé privée.\n\nOutil de déchiffrement : {url}",
     btn_copy_email: "Copier le message"
   },
   lb: {
@@ -393,7 +395,7 @@ const resources = {
     copy: "Kopéieren",
     copied: "Kopéiert",
     export_pub: "Ëffentleche Schlëssel exportéieren",
-    share_url: "Deelen iwwer URL/QR",
+    share_url: "Deelen iwwer URL",
     export_priv: "Privaten Schlëssel exportéieren",
     delete: "Läschen",
     checking: "Iwwerpréiwen...",
@@ -430,7 +432,7 @@ const resources = {
     alert_url_load_err: "Feeler beim Lueden vum ëffentleche Schlëssel vun der URL: ",
     
     label_pub_url: "Ëffentleche Schlëssel URL fir {name}",
-    label_pub_url_desc: "Dir kënnt den ëffentleche Schlëssel iwwer URL oder QR Code deelen",
+    label_pub_url_desc: "Dir kënnt den ëffentleche Schlëssel iwwer URL deelen",
     btn_copy_url: "URL kopéieren",
     
     header_export_priv: "Privaten Schlëssel exportéieren fir {name}",
@@ -453,24 +455,26 @@ const resources = {
     magic_link_header: "Magic Link (Einfach Schlësselaustausch)",
     magic_link_desc: "Schéckt dës URL un een fir einfach hiren ëffentleche Schlëssel ze kréien.",
     btn_create_magic_link: "Ufro-URL erstellen",
-    magic_req_prompt: "Gitt Ären Numm an (gëtt dem Empfänger gewisen):",
-    wizard_title: "Sécher Kommunikatiounsufro vun {sender}",
-    wizard_desc: "{sender} wëll e sécheren Dateiaustausch mat Iech opbauen.<br>Klickt op de Knäppchen hei ënnen fir unzefänken.",
+    
+    // Wizard (Generic)
+    wizard_title: "Sécher Kommunikatiounsufro",
+    wizard_desc: "Dir hutt eng Ufro kritt fir e sécheren Dateiaustausch opzebauen.<br>Klickt op de Knäppchen hei ënnen fir unzefänken.",
     wizard_btn_start: "Ufänken (Schlëssel generéieren)",
     wizard_step_done: "Pret!",
-    wizard_reply_inst: "Kopéiert d'URL hei ënnen a schéckt se zréck un {sender}.",
+    wizard_reply_inst: "Kopéiert d'URL hei ënnen a schéckt se zréck un de Sender.",
     btn_copy_reply_url: "Äntwert URL kopéieren",
 
     // Decrypt Mode
-    decrypt_mode_title: "Fir Empfänger",
-    decrypt_mode_desc: "Follegt dës Schrëtt fir ze entschlësselen:<br>1. Leet d'Datei <b>.crypted</b> hei of.<br>2. Klickt op 'Entschlësselen' fir d'Originaldatei erofzelueden.",
-    
-    // Enc Success
+    decrypt_mode_title: "Fir den Empfänger",
+    decrypt_mode_desc: "Fir ze entschlësselen:<br>1. Leet déi empfaangen <b>.crypted</b> Datei an d'Këscht hei ënnen.<br>2. Klickt op 'Entschlësselen' fir d'Originaldatei erofzelueden.",
+
+    // Encryption Success
     enc_success_title: "Verschlësselung fäerdeg",
-    enc_success_msg: "{count} Datei(en) erfollegräich verschlësselt. Download ugefaangen.",
-    enc_next_step_title: "Messageprojet fir den Empfänger",
-    enc_next_step_desc: "Kopéiert dëse Message beim Schécken vun der Datei fir dem Empfänger ze hëllefen.",
-    email_template_body: "Moien {name},\n\nEch schécken Iech eng verschlësselt Datei.\nNodeems Dir déi ugehaange Datei erofgelueden hutt, öffnen de Link hei ënnen a leet d'Datei do of.\nEt gëtt automatesch mat Ärem private Schlëssel entschlësselt.\n\nEntschlësselungstool: {url}",
+    enc_success_msg: "Verschlësselung fäerdeg fir {count} Datei(en). Download huet ugefaangen.",
+    enc_next_step_title: "Message Schabloun fir den Empfänger",
+    enc_next_step_desc: "Wann Dir déi verschlësselt Datei schéckt, enthält dëse Message fir dem Empfänger ze hëllefen.",
+    email_template_subject: "Verschlësselt Datei ugehaang",
+    email_template_body: "Ech schécken Iech eng verschlësselt Datei.\nLuet déi ugehaangen Datei erof, öffnet dann de Link hei ënnen a leet d'Datei do of.\nEt gëtt automatesch mat Ärem privaten Schlëssel entschlësselt.\n\nEntschlësselungsinstrument: {url}",
     btn_copy_email: "Message kopéieren"
   }
 };
@@ -491,8 +495,7 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'exportArea',
   'resetSection',
   'decrypt-block',
-  'magicLinkSection',
-  'UI-init'
+  'magicLinkSection'
 ];
 
 // ── i18n ヘルパー ──
@@ -577,8 +580,6 @@ function resetUI() {
   hideSpinner();
   clearExportArea();
   setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
-  // 復号モードなら再適用
-  checkDecryptMode();
 }
 
 function resetUIEncrypt() {
@@ -1222,8 +1223,8 @@ document.getElementById('encryptBtn').addEventListener('click', async () => {
   }
   resetUIEncrypt();
   hideSpinner();
-  
-  // 暗号化成功時は案内表示
+
+  // ★結果表示と「相手への案内」を表示
   if (successCount > 0) {
      showEncryptionSuccessUI(successCount);
   } else {
@@ -1231,7 +1232,7 @@ document.getElementById('encryptBtn').addEventListener('click', async () => {
   }
 });
 
-// 暗号化成功時のUI表示関数
+// ★暗号化成功時のUI表示関数
 function showEncryptionSuccessUI(count) {
     const exportArea = document.getElementById("exportArea");
     clearExportArea();
@@ -1266,7 +1267,6 @@ function showEncryptionSuccessUI(count) {
     const decryptUrl = `${baseUrl}#${DECRYPT_MODE_HASH}`;
     
     const templateText = t('email_template_body', {
-        name: "相手の名前",
         url: decryptUrl
     });
 
@@ -1283,16 +1283,6 @@ function showEncryptionSuccessUI(count) {
         copyBtn.textContent = t('copied');
     };
     exportArea.appendChild(copyBtn);
-    
-    // QRコードで渡す場合も考慮して、URLのQRも出しておくと親切
-    const qrDiv = document.createElement("div");
-    qrDiv.style.marginTop = "15px";
-    exportArea.appendChild(qrDiv);
-    new QRCode(qrDiv, {
-        text: decryptUrl,
-        width: 128,
-        height: 128
-    });
 }
 
 document.getElementById('decryptBtn').addEventListener('click', async () => {
@@ -1399,17 +1389,7 @@ async function exportPubkeyUrl(name) {
     p.textContent = t('label_pub_url_desc');
     exportArea.appendChild(p);
 
-    const qrContainer = document.createElement("div");
-    qrContainer.id = "qrcode";
-    qrContainer.style.marginTop = "16px";
-    exportArea.appendChild(qrContainer);
-
-    new QRCode(qrContainer, {
-        text: url,
-        width: QR_CODE_SIZE,
-        height: QR_CODE_SIZE,
-        correctLevel: QR_CODE_CORRECT_LEVEL
-    });
+    // QRコード削除
 }
 
 // ── 鍵一覧の再表示 ──
@@ -1704,16 +1684,15 @@ async function tryLoadPubkeyFromHash() {
 
 // ── マジックリンク機能 ──
 
-// 1. 送信者: リクエストURLを作成して表示
+// 1. 送信者: リクエストURLを作成して表示 (名前入力廃止版)
 function createMagicLink() {
-  const senderName = prompt(t('magic_req_prompt'), "Alice");
-  if (!senderName) return;
+  // 名前入力 (prompt) を廃止
 
   // 現在のベースURL (index.htmlまでのパス) を取得
   const baseUrl = window.location.href.split('#')[0];
   
-  // URLフラグメントを作成
-  const fragment = `${MAGIC_REQ_PARAM}=1&${MAGIC_SENDER_PARAM}=${encodeURIComponent(senderName)}`;
+  // URLフラグメントを作成 (senderパラメータを削除)
+  const fragment = `${MAGIC_REQ_PARAM}=1`;
   const fullUrl = `${baseUrl}#${fragment}`;
 
   // エクスポートエリアに表示
@@ -1744,26 +1723,12 @@ function createMagicLink() {
   });
   exportArea.appendChild(button);
   
-  // QRコードも表示
-  const qrContainer = document.createElement("div");
-  qrContainer.style.marginTop = "16px";
-  new QRCode(qrContainer, {
-        text: fullUrl,
-        width: QR_CODE_SIZE,
-        height: QR_CODE_SIZE,
-        correctLevel: QR_CODE_CORRECT_LEVEL
-  });
-  exportArea.appendChild(qrContainer);
+  // QRコード削除済み
 }
 
-// 2. 受信者: ウィザード画面の制御
+// 2. 受信者: ウィザード画面の制御 (名前表示廃止版)
 async function checkMagicLinkRequest() {
   if (!location.hash.includes(`${MAGIC_REQ_PARAM}=1`)) return;
-
-  // URLパラメータ解析
-  const hash = location.hash.slice(1);
-  const params = new URLSearchParams(hash);
-  const sender = params.get(MAGIC_SENDER_PARAM) || "Sender";
 
   // 通常UIを隠し、ウィザードを表示
   const mainApp = document.getElementById('main-app-container');
@@ -1772,9 +1737,9 @@ async function checkMagicLinkRequest() {
   const wizard = document.getElementById('magicLinkWizard');
   wizard.style.display = 'block';
 
-  // ウィザードのテキスト設定
-  document.getElementById('wizardTitle').textContent = t('wizard_title', {sender: sender});
-  document.getElementById('wizardDesc').innerHTML = t('wizard_desc', {sender: sender});
+  // ウィザードのテキスト設定 (パラメータなしで呼び出し)
+  document.getElementById('wizardTitle').textContent = t('wizard_title');
+  document.getElementById('wizardDesc').innerHTML = t('wizard_desc');
   
   const startBtn = document.getElementById('wizardStartBtn');
   startBtn.textContent = t('wizard_btn_start');
@@ -1812,7 +1777,7 @@ async function checkMagicLinkRequest() {
       resultArea.style.display = 'block';
       
       document.getElementById('wizardDoneMsg').textContent = t('wizard_step_done');
-      document.getElementById('wizardReplyInst').textContent = t('wizard_reply_inst', {sender: sender});
+      document.getElementById('wizardReplyInst').textContent = t('wizard_reply_inst');
       
       const replyInput = document.getElementById('wizardReplyUrl');
       replyInput.value = replyUrl;
@@ -1824,13 +1789,7 @@ async function checkMagicLinkRequest() {
         copyBtn.textContent = t('copied');
       };
       
-      // QRコード
-      new QRCode(document.getElementById('wizardQr'), {
-        text: replyUrl,
-        width: 256,
-        height: 256,
-        correctLevel: QRCode.CorrectLevel.L
-      });
+      // QRコード削除
 
     } catch (e) {
       console.error(e);
@@ -1840,28 +1799,28 @@ async function checkMagicLinkRequest() {
   };
 }
 
-// ── 復号誘導モード ──
+// ── 復号誘導モードのチェック関数 ──
 function checkDecryptMode() {
   if (location.hash.includes(DECRYPT_MODE_HASH)) {
     // UIをシンプルにする
     // 1. 暗号化セクション、鍵管理、リセットなどを隠す
     const sectionsToHide = [
-      'encryptionSection',        // 暗号化セクション丸ごと
-      'pubkey-file-select-block', // 公開鍵選択
-      'privKeyImport',            // 秘密鍵インポート
-      'keyManagement',            // 鍵管理
-      'resetSection',             // リセット
-      'magicLinkSection',         // マジックリンク作成
+      'encryptSection',           // 追加: 暗号化セクション全体を非表示
+      'pubkey-file-select-block', // (念のため残すがencryptSectionが消えれば消える)
+      'privKeyImport',            
+      'keyManagement',            
+      'resetSection',             
+      'magicLinkSection',         
       'UI-init'
     ];
     setBlocksDisplay(sectionsToHide, "none");
 
-    // 2. 暗号化ボタンを隠す
-    const encBtn = document.getElementById('encryptBtn');
-    if(encBtn) encBtn.style.display = 'none';
+    // 2. 暗号化ボタンを隠す (念のため)
+    const encryptBtn = document.getElementById('encryptBtn');
+    if(encryptBtn) encryptBtn.style.display = 'none';
     
     // 3. タイトルと説明を書き換える
-    document.querySelector('h1').innerText = "PubliCrypt (Decrypt Mode)";
+    document.querySelector('h1').innerText = "PubliCrypt (復号)";
     
     // ファイルセクションのヘッダーを書き換え
     const fileSectionHead = document.querySelector('#fileSection h2');
@@ -1869,7 +1828,7 @@ function checkDecryptMode() {
 
     // ドロップエリアの説明を書き換え
     const dropArea = document.getElementById('fileDropArea');
-    if(dropArea) dropArea.innerHTML = t('drop_area_text') + "<br><small>" + t('decrypt_mode_desc') + "</small>";
+    dropArea.innerHTML = t('drop_area_text') + "<br><small>" + t('decrypt_mode_desc') + "</small>";
     
     // 復号ブロックを目立たせる
     const decryptBlock = document.querySelector('.decrypt-block');
@@ -1880,11 +1839,9 @@ function checkDecryptMode() {
     
     // 復号ボタンのテキストを目立たせる
     const btn = document.getElementById('decryptBtn');
-    if(btn) {
-        btn.style.width = "100%";
-        btn.style.fontSize = "1.2em";
-        btn.style.marginTop = "20px";
-    }
+    btn.style.width = "100%";
+    btn.style.fontSize = "1.2em";
+    btn.style.marginTop = "20px";
   }
 }
 
