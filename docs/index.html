@@ -300,7 +300,6 @@
             <input type="text" id="wizardReplyUrl" readonly style="width:90%; padding:10px; margin-bottom:10px;">
             <br>
             <button id="wizardCopyBtn"></button>
-            <div id="wizardQr" style="margin-top:20px; display:flex; justify-content:center;"></div>
         </div>
     </div>
 
@@ -320,7 +319,7 @@
         <ul id="fileList"></ul>
 
         <div class="crypto-row">
-            <div id="encryptionSection" class="key-section">
+            <div class="key-section" id="encryptSection">
             <h2 data-i18n="encrypt_title">暗号化</h2>
             <div id="pubkey-file-select-block">
                 <div data-i18n="encrypt_instruction">暗号化で使用する公開鍵のファイルを読み込んでください</div>
@@ -383,9 +382,7 @@
           <button id="createMagicLinkBtn" data-i18n="btn_create_magic_link">鍵交換リクエストURLを作成</button>
         </section>
 
-        <div id="exportArea">
-        <div id="qrcode" style="margin-top:16px;"></div>
-        </div>
+        <div id="exportArea"></div>
         <section id="resetSection" class="warning-section">
         <h2 data-i18n="warning_header">取り扱い注意！</h2>
         <p data-i18n="warning_text">
@@ -400,7 +397,6 @@
         </div>
     </div>
   </main>
-  <script src="qrcode.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
