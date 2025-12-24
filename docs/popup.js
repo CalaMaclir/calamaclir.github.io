@@ -8,6 +8,7 @@ const PUBKEY_SHARE_BASE_URL = "https://calamaclir.github.io/index.html";
 const HEADER_CHECK_SIZE = 1024 * 1024;
 const MAGIC_REQ_PARAM = "magic_req";
 const MAGIC_SENDER_PARAM = "sender";
+const DECRYPT_MODE_HASH = "decrypt_mode";
 
 // ── QRコード用定数 ──
 const QR_CODE_CORRECT_LEVEL = QRCode.CorrectLevel.L;
@@ -116,7 +117,19 @@ const resources = {
     wizard_btn_start: "準備を開始する (鍵生成)",
     wizard_step_done: "準備完了！",
     wizard_reply_inst: "以下のURLをコピーして、{sender} さんに返信してください。",
-    btn_copy_reply_url: "返信URLをコピー"
+    btn_copy_reply_url: "返信URLをコピー",
+
+    // 復号誘導モード
+    decrypt_mode_title: "ファイルを受け取った方へ",
+    decrypt_mode_desc: "以下の手順で、暗号化されたファイルを元に戻します（復号）。<br>1. 送られてきた <b>.crypted</b> ファイルを下の枠にドロップしてください。<br>2. 「復号」ボタンを押すと、元のファイルがダウンロードされます。",
+    
+    // 暗号化完了後の案内
+    enc_success_title: "暗号化完了",
+    enc_success_msg: "ファイル ({count}件) の暗号化が完了し、ダウンロードが開始されました。",
+    enc_next_step_title: "相手への送信メッセージ案",
+    enc_next_step_desc: "暗号化したファイルをメール等で送る際、以下のメッセージを添えると相手が迷わずに復号できます。",
+    email_template_body: "{name}さん\n\n暗号化したファイルを送ります。\n添付のファイルをダウンロードした後、以下のリンクを開いてファイルをドラッグ＆ドロップしてください。\n自動的にあなたの秘密鍵を使って復号されます。\n\n復号ツール: {url}",
+    btn_copy_email: "メッセージをコピー"
   },
   en: {
     app_desc: "File encryption/decryption Chrome extension using public key cryptography.<br>Manage keys and encrypt/decrypt files easily.<br>Keys are stored in IndexedDB within the browser, and all processing is done locally.",
@@ -218,7 +231,19 @@ const resources = {
     wizard_btn_start: "Start Setup (Generate Key)",
     wizard_step_done: "Ready!",
     wizard_reply_inst: "Copy the URL below and send it back to {sender}.",
-    btn_copy_reply_url: "Copy Reply URL"
+    btn_copy_reply_url: "Copy Reply URL",
+
+    // Decrypt Mode
+    decrypt_mode_title: "For Recipients",
+    decrypt_mode_desc: "Follow these steps to decrypt the file:<br>1. Drop the <b>.crypted</b> file here.<br>2. Click 'Decrypt' to download the original file.",
+    
+    // Enc Success
+    enc_success_title: "Encryption Complete",
+    enc_success_msg: "Successfully encrypted {count} file(s). Download started.",
+    enc_next_step_title: "Draft Message for Recipient",
+    enc_next_step_desc: "Copy this message when sending the file to help the recipient decrypt it easily.",
+    email_template_body: "Hi {name},\n\nI'm sending you an encrypted file.\nAfter downloading the attached file, open the link below and drop the file there.\nIt will be decrypted automatically using your private key.\n\nDecryption Tool: {url}",
+    btn_copy_email: "Copy Message"
   },
   fr: {
     app_desc: "Extension Chrome de chiffrement et déchiffrement de fichiers utilisant la cryptographie à clé publique.<br>Gérez vos clés et chiffrez/déchiffrez des fichiers facilement.<br>Les clés sont stockées dans IndexedDB dans votre navigateur, et tout le traitement est effectué localement.",
@@ -320,7 +345,19 @@ const resources = {
     wizard_btn_start: "Commencer (Générer une clé)",
     wizard_step_done: "Prêt !",
     wizard_reply_inst: "Copiez l'URL ci-dessous et renvoyez-la à {sender}.",
-    btn_copy_reply_url: "Copier l'URL de réponse"
+    btn_copy_reply_url: "Copier l'URL de réponse",
+
+    // Decrypt Mode
+    decrypt_mode_title: "Pour les destinataires",
+    decrypt_mode_desc: "Suivez ces étapes pour déchiffrer :<br>1. Déposez le fichier <b>.crypted</b> ici.<br>2. Cliquez sur 'Déchiffrer' pour télécharger le fichier original.",
+    
+    // Enc Success
+    enc_success_title: "Chiffrement terminé",
+    enc_success_msg: "{count} fichier(s) chiffré(s). Téléchargement commencé.",
+    enc_next_step_title: "Projet de message pour le destinataire",
+    enc_next_step_desc: "Copiez ce message lorsque vous envoyez le fichier pour aider le destinataire.",
+    email_template_body: "Bonjour {name},\n\nJe vous envoie un fichier chiffré.\nAprès avoir téléchargé le fichier joint, ouvrez le lien ci-dessous et déposez-y le fichier.\nIl sera déchiffré automatiquement avec votre clé privée.\n\nOutil de déchiffrement : {url}",
+    btn_copy_email: "Copier le message"
   },
   lb: {
     app_desc: "Chrome-Extensioun fir Verschlësselung an Entschlësselung vun Dateien mat ëffentleche Schlësselen.<br>Verwalten Är Schlësselen an verschlësselt/entschlësselt Dateien einfach.<br>D'Schlëssel ginn an der IndexedDB an Ärem Browser gespäichert, an all Veraarbechtung gëtt lokal gemaach.",
@@ -422,7 +459,19 @@ const resources = {
     wizard_btn_start: "Ufänken (Schlëssel generéieren)",
     wizard_step_done: "Pret!",
     wizard_reply_inst: "Kopéiert d'URL hei ënnen a schéckt se zréck un {sender}.",
-    btn_copy_reply_url: "Äntwert URL kopéieren"
+    btn_copy_reply_url: "Äntwert URL kopéieren",
+
+    // Decrypt Mode
+    decrypt_mode_title: "Fir Empfänger",
+    decrypt_mode_desc: "Follegt dës Schrëtt fir ze entschlësselen:<br>1. Leet d'Datei <b>.crypted</b> hei of.<br>2. Klickt op 'Entschlësselen' fir d'Originaldatei erofzelueden.",
+    
+    // Enc Success
+    enc_success_title: "Verschlësselung fäerdeg",
+    enc_success_msg: "{count} Datei(en) erfollegräich verschlësselt. Download ugefaangen.",
+    enc_next_step_title: "Messageprojet fir den Empfänger",
+    enc_next_step_desc: "Kopéiert dëse Message beim Schécken vun der Datei fir dem Empfänger ze hëllefen.",
+    email_template_body: "Moien {name},\n\nEch schécken Iech eng verschlësselt Datei.\nNodeems Dir déi ugehaange Datei erofgelueden hutt, öffnen de Link hei ënnen a leet d'Datei do of.\nEt gëtt automatesch mat Ärem private Schlëssel entschlësselt.\n\nEntschlësselungstool: {url}",
+    btn_copy_email: "Message kopéieren"
   }
 };
 
@@ -442,7 +491,8 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'exportArea',
   'resetSection',
   'decrypt-block',
-  'magicLinkSection'
+  'magicLinkSection',
+  'UI-init'
 ];
 
 // ── i18n ヘルパー ──
@@ -527,6 +577,8 @@ function resetUI() {
   hideSpinner();
   clearExportArea();
   setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
+  // 復号モードなら再適用
+  checkDecryptMode();
 }
 
 function resetUIEncrypt() {
@@ -1170,8 +1222,78 @@ document.getElementById('encryptBtn').addEventListener('click', async () => {
   }
   resetUIEncrypt();
   hideSpinner();
-  alert(t('alert_done_result', {success: successCount, fail: failCount}));
+  
+  // 暗号化成功時は案内表示
+  if (successCount > 0) {
+     showEncryptionSuccessUI(successCount);
+  } else {
+     alert(t('alert_done_result', {success: successCount, fail: failCount}));
+  }
 });
+
+// 暗号化成功時のUI表示関数
+function showEncryptionSuccessUI(count) {
+    const exportArea = document.getElementById("exportArea");
+    clearExportArea();
+    dispExportArea();
+
+    // 成功メッセージ
+    const h3 = document.createElement("h3");
+    h3.textContent = t('enc_success_title');
+    h3.style.color = "#2e7d32";
+    exportArea.appendChild(h3);
+
+    const p = document.createElement("p");
+    p.textContent = t('enc_success_msg', {count: count});
+    exportArea.appendChild(p);
+    
+    exportArea.appendChild(document.createElement("hr"));
+
+    // 相手への案内作成
+    const h4 = document.createElement("h4");
+    h4.textContent = t('enc_next_step_title');
+    exportArea.appendChild(h4);
+
+    const desc = document.createElement("p");
+    desc.textContent = t('enc_next_step_desc');
+    desc.style.fontSize = "0.9em";
+    desc.style.color = "#666";
+    exportArea.appendChild(desc);
+
+    // テンプレート作成
+    // 現在のURLのハッシュを #decrypt_mode に変えたもの
+    const baseUrl = window.location.href.split('#')[0];
+    const decryptUrl = `${baseUrl}#${DECRYPT_MODE_HASH}`;
+    
+    const templateText = t('email_template_body', {
+        name: "相手の名前",
+        url: decryptUrl
+    });
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 8;
+    textarea.style.width = "98%";
+    textarea.value = templateText;
+    exportArea.appendChild(textarea);
+
+    const copyBtn = document.createElement("button");
+    copyBtn.textContent = t('btn_copy_email');
+    copyBtn.onclick = () => {
+        navigator.clipboard.writeText(templateText);
+        copyBtn.textContent = t('copied');
+    };
+    exportArea.appendChild(copyBtn);
+    
+    // QRコードで渡す場合も考慮して、URLのQRも出しておくと親切
+    const qrDiv = document.createElement("div");
+    qrDiv.style.marginTop = "15px";
+    exportArea.appendChild(qrDiv);
+    new QRCode(qrDiv, {
+        text: decryptUrl,
+        width: 128,
+        height: 128
+    });
+}
 
 document.getElementById('decryptBtn').addEventListener('click', async () => {
   if (filesToProcess.length === 0) {
@@ -1718,6 +1840,54 @@ async function checkMagicLinkRequest() {
   };
 }
 
+// ── 復号誘導モード ──
+function checkDecryptMode() {
+  if (location.hash.includes(DECRYPT_MODE_HASH)) {
+    // UIをシンプルにする
+    // 1. 暗号化セクション、鍵管理、リセットなどを隠す
+    const sectionsToHide = [
+      'encryptionSection',        // 暗号化セクション丸ごと
+      'pubkey-file-select-block', // 公開鍵選択
+      'privKeyImport',            // 秘密鍵インポート
+      'keyManagement',            // 鍵管理
+      'resetSection',             // リセット
+      'magicLinkSection',         // マジックリンク作成
+      'UI-init'
+    ];
+    setBlocksDisplay(sectionsToHide, "none");
+
+    // 2. 暗号化ボタンを隠す
+    const encBtn = document.getElementById('encryptBtn');
+    if(encBtn) encBtn.style.display = 'none';
+    
+    // 3. タイトルと説明を書き換える
+    document.querySelector('h1').innerText = "PubliCrypt (Decrypt Mode)";
+    
+    // ファイルセクションのヘッダーを書き換え
+    const fileSectionHead = document.querySelector('#fileSection h2');
+    if(fileSectionHead) fileSectionHead.innerHTML = t('decrypt_mode_title');
+
+    // ドロップエリアの説明を書き換え
+    const dropArea = document.getElementById('fileDropArea');
+    if(dropArea) dropArea.innerHTML = t('drop_area_text') + "<br><small>" + t('decrypt_mode_desc') + "</small>";
+    
+    // 復号ブロックを目立たせる
+    const decryptBlock = document.querySelector('.decrypt-block');
+    if(decryptBlock) {
+        decryptBlock.style.display = 'block';
+        decryptBlock.style.width = '100%';
+    }
+    
+    // 復号ボタンのテキストを目立たせる
+    const btn = document.getElementById('decryptBtn');
+    if(btn) {
+        btn.style.width = "100%";
+        btn.style.fontSize = "1.2em";
+        btn.style.marginTop = "20px";
+    }
+  }
+}
+
 // ── 初期化処理 ──
 window.addEventListener("load", async () => {
   // 言語検出
@@ -1736,6 +1906,7 @@ window.addEventListener("load", async () => {
   await initDB();
   await tryLoadPubkeyFromHash();
   await checkMagicLinkRequest(); // マジックリンクチェック
+  checkDecryptMode(); // 復号モードチェック
 });
 
 // イベントリスナー
