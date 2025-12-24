@@ -32,6 +32,7 @@
 	a {
 	  color: var(--accent);
 	  text-decoration: underline;
+	  cursor: pointer;
 	}
 
 	main {
@@ -41,7 +42,29 @@
 	  background: #fff;
 	  border-radius: var(--radius);
 	  box-shadow: var(--shadow);
+	  position: relative;
 	}
+    
+    /* 言語切り替えスイッチ */
+    .lang-switch {
+        position: absolute;
+        top: 24px;
+        right: 24px;
+        font-size: 0.9em;
+    }
+    .lang-switch span {
+        cursor: pointer;
+        color: #888;
+        font-weight: bold;
+        margin: 0 2px;
+    }
+    .lang-switch span:hover {
+        color: var(--accent);
+    }
+    .lang-switch span.active {
+        color: var(--accent);
+        text-decoration: underline;
+    }
 
 	section {
 	  margin-bottom: 32px;
@@ -213,6 +236,8 @@
 	  font-size: 1.18em;
 	  z-index: 1000;
 	  color: var(--accent);
+      text-align: center;
+      max-width: 80%;
 	}
 
     #exportArea:empty { display: none; }
@@ -257,42 +282,40 @@
 </head>
 <body>
   <main>
+    <div class="lang-switch">
+        <span id="lang-ja">JP</span> / <span id="lang-en">EN</span> / <span id="lang-fr">FR</span> / <span id="lang-lb">LB</span>
+    </div>
     <h1>PubliCrypt</h1>
-    <div>
-      公開鍵暗号化を利用したファイルの暗号化・復号Chrome拡張機能<br>
-      鍵の管理と暗号化、復号の処理が手軽にできます<br>
-      鍵はブラウザ内の IndexedDB に保存され、すべての処理はローカルで実施されます
-    </div>
+    <div data-i18n="app_desc">
+      </div>
     <div style="margin-bottom:16px;">
-      <a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank">簡単な説明はこちらをごらんください</a>
+      <a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank" data-i18n="link_manual">簡単な説明はこちらをごらんください</a>
     </div>
-    <div id="spinner">処理中...</div>
+    <div id="spinner" data-i18n="processing">処理中...</div>
 
     <section id="fileSection">
-      <h2>暗号化／復号の対象ファイル</h2>
-      <div id="fileDropArea">ここにファイルをドロップ</div>
+      <h2 data-i18n="target_files_header">暗号化／復号の対象ファイル</h2>
+      <div id="fileDropArea" data-i18n="drop_area_text">ここにファイルをドロップ</div>
       <input type="file" id="fileSelect" multiple>
       <ul id="fileList"></ul>
 
       <div class="crypto-row">
         <div class="key-section">
-          <h2>暗号化</h2>
-		  <!-- ▼ここからまとめて囲む▼ -->
+          <h2 data-i18n="encrypt_title">暗号化</h2>
 		  <div id="pubkey-file-select-block">
-		    <div>暗号化で使用する公開鍵のファイルを読み込んでください</div>
-		    <h3>公開鍵選択 (.pubkey XML)</h3>
+		    <div data-i18n="encrypt_instruction">暗号化で使用する公開鍵のファイルを読み込んでください</div>
+		    <h3 data-i18n="pubkey_select_header">公開鍵選択 (.pubkey XML)</h3>
 		    <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
 		  </div>
-		  <!-- ▲ここまで▲ -->
-          <button id="encryptBtn">暗号化</button>
+		  <button id="encryptBtn" data-i18n="encrypt_btn">暗号化</button>
           <ul id="pubKeyList"></ul>
         </div>
 
         <div class="decrypt-block">
 	        <div class="key-section">
-	          <h2>復号</h2>
-	          <div>秘密鍵は鍵一覧から自動選択されます</div>
-	          <button id="decryptBtn">復号</button>
+	          <h2 data-i18n="decrypt_title">復号</h2>
+	          <div data-i18n="decrypt_instruction">秘密鍵は鍵一覧から自動選択されます</div>
+	          <button id="decryptBtn" data-i18n="decrypt_btn">復号</button>
 	        </div>
         </div>
       </div>
@@ -300,7 +323,7 @@
 
     <section id="privKeyImport">
       <div class="key-section">
-        <h2>秘密鍵インポート (.pvtkey XML)</h2>
+        <h2 data-i18n="privkey_import_header">秘密鍵インポート (.pvtkey XML)</h2>
         <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
         <ul id="privKeyList"></ul>
       </div>
@@ -308,24 +331,24 @@
 
     <section id="keyManagement">
       <div class="key-section">
-        <h2>鍵管理</h2>
+        <h2 data-i18n="key_mgmt_header">鍵管理</h2>
         <div style="margin-bottom:10px;">
-          <label for="keyNameInput">鍵名 (英数字、_, -, @, . のみ): </label>
-          <input type="text" id="keyNameInput" placeholder="例: MyKey01">
+          <label for="keyNameInput" data-i18n="key_name_label">鍵名 (英数字、_, -, @, . のみ): </label>
+          <input type="text" id="keyNameInput">
           <select id="keyAlgorithmSelect">
-            <option value="EC">楕円曲線 (ECDH)</option>
+            <option value="EC" data-i18n="algo_ec">楕円曲線 (ECDH)</option>
           </select>
-          <button id="generateKeyButton">鍵生成</button>
+          <button id="generateKeyButton" data-i18n="generate_btn">鍵生成</button>
         </div>
         <div>
-          <h3>鍵一覧</h3>
+          <h3 data-i18n="key_list_header">鍵一覧</h3>
           <table id="keyTable">
             <thead>
               <tr>
-                <th>鍵名</th>
-                <th>種別</th>
-                <th>鍵情報</th>
-                <th>操作</th>
+                <th data-i18n="col_keyname">鍵名</th>
+                <th data-i18n="col_type">種別</th>
+                <th data-i18n="col_info">鍵情報</th>
+                <th data-i18n="col_operation">操作</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -334,23 +357,20 @@
       </div>
     </section>
 
-    <!-- exportAreaは.key-section外(mainの幅いっぱい) -->
     <div id="exportArea">
-    <!-- QRコード描画領域をあらかじめ配置（スタイルはお好みで） -->
-        <div id="qrcode" style="margin-top:16px;"></div>
+    <div id="qrcode" style="margin-top:16px;"></div>
     </div>
     <section id="resetSection" class="warning-section">
-      <h2>取り扱い注意！</h2>
-      <p>
+      <h2 data-i18n="warning_header">取り扱い注意！</h2>
+      <p data-i18n="warning_text">
         以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
         この操作は元に戻せませんので、十分に注意してください。
       </p>
-      <button id="resetDBBtn">鍵一覧初期化</button>
+      <button id="resetDBBtn" data-i18n="reset_db_btn">鍵一覧初期化</button>
     </section>
-	<!-- UI初期化用のボタン -->
-    <div id="UI-init">
-		<button id="resetUiBtn" style="background:#777;color:#fff;margin-top:24px;">画面を初期化する</button>
-		<button id="reloadURLBtn" style="background:#777;color:#fff;margin-top:24px;">URL公開鍵を読み直す</button>
+	<div id="UI-init">
+		<button id="resetUiBtn" style="background:#777;color:#fff;margin-top:24px;" data-i18n="reset_ui_btn">画面を初期化する</button>
+		<button id="reloadURLBtn" style="background:#777;color:#fff;margin-top:24px;" data-i18n="reload_url_btn">URL公開鍵を読み直す</button>
     </div>
   </main>
   <script src="qrcode.min.js"></script>
