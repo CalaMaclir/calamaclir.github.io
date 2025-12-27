@@ -86,7 +86,7 @@ const resources = {
     label_pub_url: "{name} の 公開鍵URL",
     label_pub_url_desc: "このURLを相手に送ることで、公開鍵を共有できます",
     btn_copy_url: "公開鍵のURLをコピー",
-    
+    btn_copy_request_url: "リクエストURLをコピー",
     header_export_priv: "{name} の 秘密鍵をエクスポートする",
     header_export_pub: "{name} の 公開鍵をエクスポートする",
     warn_priv_sensitive: "※ 秘密鍵は非常にセンシティブな情報です。取り扱いには十分ご注意ください。",
@@ -202,7 +202,7 @@ const resources = {
     label_pub_url: "Public Key URL for {name}",
     label_pub_url_desc: "You can share the public key via URL",
     btn_copy_url: "Copy URL",
-    
+    btn_copy_request_url: "Copy Request URL",
     header_export_priv: "Export Private Key for {name}",
     header_export_pub: "Export Public Key for {name}",
     warn_priv_sensitive: "※ Private keys are extremely sensitive. Handle with care.",
@@ -318,7 +318,7 @@ const resources = {
     label_pub_url: "URL de la clé publique pour {name}",
     label_pub_url_desc: "Vous pouvez partager la clé publique via URL",
     btn_copy_url: "Copier l'URL",
-    
+    btn_copy_request_url: "Copier l'URL de demande",
     header_export_priv: "Exporter la clé privée pour {name}",
     header_export_pub: "Exporter la clé publique pour {name}",
     warn_priv_sensitive: "※ Les clés privées sont extrêmement sensibles. Manipulez-les avec précaution.",
@@ -434,7 +434,7 @@ const resources = {
     label_pub_url: "Ëffentleche Schlëssel URL fir {name}",
     label_pub_url_desc: "Dir kënnt den ëffentleche Schlëssel iwwer URL deelen",
     btn_copy_url: "URL kopéieren",
-    
+    btn_copy_request_url: "Ufro-URL kopéieren",
     header_export_priv: "Privaten Schlëssel exportéieren fir {name}",
     header_export_pub: "Ëffentleche Schlëssel exportéieren fir {name}",
     warn_priv_sensitive: "※ Privat Schlëssel sinn extrem sensibel. Gitt virsiichteg domat ëm.",
@@ -568,17 +568,56 @@ function hideResetUiButtonsInExtension() {
 }
 
 // --- UI初期化時 ---
+// --- UI初期化時 ---
 function resetUI() {
+  // 1. 基本的なクリア処理
   filesToProcess.length = 0;
   encryptionPublicKeys.length = 0;
   document.getElementById('fileList').textContent = "";
-  document.getElementById('fileDropArea').textContent = t('drop_area_text');
+  document.getElementById('fileDropArea').innerHTML = t('drop_area_text');
   document.getElementById('pubKeyList').textContent = "";
   document.getElementById('fileSelect').value = "";
   document.getElementById('privKeyList').textContent = "";
   hideSpinner();
   clearExportArea();
+  
+  // 2. モード解除と表示の復帰
+  history.replaceState(null, null, ' ');
+
+  const wizard = document.getElementById('magicLinkWizard');
+  if (wizard) wizard.style.display = 'none';
+  
+  const mainApp = document.getElementById('main-app-container');
+  if (mainApp) mainApp.style.display = 'block';
+
   setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "");
+
+  // 【追加】URL読み直しボタンを再表示する
+  const reloadBtn = document.getElementById('reloadURLBtn');
+  if (reloadBtn) reloadBtn.style.display = '';
+
+  // 復号モード解除処理（既存）
+  document.querySelector('h1').innerText = "PubliCrypt";
+  const fileSecHeader = document.querySelector('#fileSection h2');
+  if(fileSecHeader) fileSecHeader.innerHTML = t('target_files_header');
+
+  const encryptSection = document.getElementById('encryptSection');
+  if (encryptSection) encryptSection.style.display = '';
+  
+  const encryptBtn = document.getElementById('encryptBtn');
+  if (encryptBtn) encryptBtn.style.display = '';
+
+  const decryptBtn = document.getElementById('decryptBtn');
+  if (decryptBtn) {
+      decryptBtn.style.width = "";
+      decryptBtn.style.fontSize = "";
+      decryptBtn.style.marginTop = "";
+  }
+  const decryptBlock = document.querySelector('.decrypt-block');
+  if (decryptBlock) {
+      decryptBlock.style.display = "";
+      decryptBlock.style.width = "";
+  }
 }
 
 function resetUIEncrypt() {
@@ -1262,8 +1301,7 @@ function showEncryptionSuccessUI(count) {
 
     // テンプレート作成
     // 現在のURLのハッシュを #decrypt_mode に変えたもの
-    const baseUrl = window.location.href.split('#')[0];
-    const decryptUrl = `${baseUrl}#${DECRYPT_MODE_HASH}`;
+    const decryptUrl = `${PUBKEY_SHARE_BASE_URL}#${DECRYPT_MODE_HASH}`;
     
     const templateText = t('email_template_body', {
         url: decryptUrl
@@ -1303,7 +1341,12 @@ document.getElementById('decryptBtn').addEventListener('click', async () => {
       failCount++;
     }
   }
-  resetUI();
+  
+  // 【修正】ファイル一覧と内部バッファをクリアする
+  filesToProcess.length = 0;
+  document.getElementById('fileList').textContent = "";
+  document.getElementById('fileSelect').value = "";
+  
   hideSpinner();
   alert(t('alert_done_result', {success: successCount, fail: failCount}));
 });
@@ -1685,14 +1728,9 @@ async function tryLoadPubkeyFromHash() {
 
 // 1. 送信者: リクエストURLを作成して表示 (名前入力廃止版)
 function createMagicLink() {
-  // 名前入力 (prompt) を廃止
-
-  // 現在のベースURL (index.htmlまでのパス) を取得
-  const baseUrl = window.location.href.split('#')[0];
-  
   // URLフラグメントを作成 (senderパラメータを削除)
   const fragment = `${MAGIC_REQ_PARAM}=1`;
-  const fullUrl = `${baseUrl}#${fragment}`;
+  const fullUrl = `${PUBKEY_SHARE_BASE_URL}#${fragment}`;
 
   // エクスポートエリアに表示
   const exportArea = document.getElementById("exportArea");
@@ -1715,7 +1753,7 @@ function createMagicLink() {
   exportArea.appendChild(input);
 
   const button = document.createElement("button");
-  button.textContent = t('btn_copy_url'); 
+  button.textContent = t('btn_copy_request_url'); 
   button.addEventListener("click", () => {
       navigator.clipboard.writeText(fullUrl);
       button.textContent = t('copied');
@@ -1735,6 +1773,10 @@ async function checkMagicLinkRequest() {
   
   const wizard = document.getElementById('magicLinkWizard');
   wizard.style.display = 'block';
+
+  // 【追加】URL読み直しボタンを非表示にする
+  const reloadBtn = document.getElementById('reloadURLBtn');
+  if (reloadBtn) reloadBtn.style.display = 'none';
 
   // ウィザードのテキスト設定 (パラメータなしで呼び出し)
   document.getElementById('wizardTitle').textContent = t('wizard_title');
@@ -1767,8 +1809,7 @@ async function checkMagicLinkRequest() {
 
       // 返信URL構築 (既存のPubliCryptが読み込める形式 #pubkey=...)
       // 送信者がこのURLを開くと、自動的に鍵がインポートされる
-      const baseUrl = window.location.href.split('#')[0];
-      const replyUrl = `${baseUrl}#pubkey=${b64url}&fp=${fingerprint}`;
+      const replyUrl = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
 
       // 結果表示
       document.getElementById('wizardStep1').style.display = 'none';
@@ -1799,44 +1840,43 @@ async function checkMagicLinkRequest() {
 }
 
 // ── 復号誘導モードのチェック関数 ──
+// ── 復号誘導モードのチェック関数 ──
+// ── 復号誘導モードのチェック関数 ──
 function checkDecryptMode() {
   if (location.hash.includes(DECRYPT_MODE_HASH)) {
-    // UIをシンプルにする
-    // 1. 暗号化セクション、鍵管理、リセットなどを隠す
+    // 既存の非表示リスト
     const sectionsToHide = [
-      'encryptSection',           // 追加: 暗号化セクション全体を非表示
-      'pubkey-file-select-block', // (念のため残すがencryptSectionが消えれば消える)
+      'encryptSection',
+      'pubkey-file-select-block',
       'privKeyImport',            
       'keyManagement',            
       'resetSection',             
-      'magicLinkSection',         
-      'UI-init'
+      'magicLinkSection'
     ];
     setBlocksDisplay(sectionsToHide, "none");
 
-    // 2. 暗号化ボタンを隠す (念のため)
+    // 【追加】URL読み直しボタンも非表示にする
+    const reloadBtn = document.getElementById('reloadURLBtn');
+    if (reloadBtn) reloadBtn.style.display = 'none';
+
+    // 以下、既存の処理
     const encryptBtn = document.getElementById('encryptBtn');
     if(encryptBtn) encryptBtn.style.display = 'none';
     
-    // 3. タイトルと説明を書き換える
     document.querySelector('h1').innerText = "PubliCrypt (復号)";
     
-    // ファイルセクションのヘッダーを書き換え
     const fileSectionHead = document.querySelector('#fileSection h2');
     if(fileSectionHead) fileSectionHead.innerHTML = t('decrypt_mode_title');
 
-    // ドロップエリアの説明を書き換え
     const dropArea = document.getElementById('fileDropArea');
     dropArea.innerHTML = t('drop_area_text') + "<br><small>" + t('decrypt_mode_desc') + "</small>";
     
-    // 復号ブロックを目立たせる
     const decryptBlock = document.querySelector('.decrypt-block');
     if(decryptBlock) {
         decryptBlock.style.display = 'block';
         decryptBlock.style.width = '100%';
     }
     
-    // 復号ボタンのテキストを目立たせる
     const btn = document.getElementById('decryptBtn');
     btn.style.width = "100%";
     btn.style.fontSize = "1.2em";
@@ -1875,7 +1915,18 @@ document.getElementById('resetUiBtn').addEventListener('click', async () => {
   resetUI();
 });
 document.getElementById('reloadURLBtn').addEventListener('click', async () => {
+  // 1. resetUIで消えてしまう前に、現在のURLハッシュ(#pubkey=...)を保存しておく
+  const savedHash = location.hash;
+  
+  // 2. 画面を初期化（ここでURLハッシュが消去される）
   resetUI();
+  
+  // 3. 保存しておいたハッシュがあれば、URLに戻す
+  if (savedHash) {
+      history.replaceState(null, null, savedHash); 
+  }
+
+  // 4. 改めてハッシュから公開鍵を読み込む
   await tryLoadPubkeyFromHash();
 });
 
