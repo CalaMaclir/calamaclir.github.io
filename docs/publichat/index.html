@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PucliChat</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #0b0f14; color: #e6edf3; }
+    header { padding: 14px 16px; border-bottom: 1px solid #1f2a37; display:flex; gap:12px; align-items:center; }
+    header h1 { font-size: 16px; margin: 0; }
+    main { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 52px); }
+    .panel { border-right: 1px solid #1f2a37; padding: 16px; overflow:auto; }
+    .chat { padding: 16px; display:flex; flex-direction:column; gap:10px; }
+    .card { background:#0f1720; border:1px solid #1f2a37; border-radius: 12px; padding: 12px; }
+    label { display:block; font-size: 12px; opacity:.9; margin: 10px 0 6px; }
+    input, button { font: inherit; }
+    input[type="text"], input[type="password"] {
+      width: 100%; box-sizing:border-box;
+      background:#0b1220; color:#e6edf3; border:1px solid #243244; border-radius: 10px;
+      padding: 10px 12px;
+    }
+    button {
+      background:#1f6feb; color:white; border:0; border-radius:10px; padding:10px 12px; cursor:pointer;
+    }
+    button.secondary { background:#243244; }
+    button.danger { background:#b42318; }
+    button:disabled { opacity: .6; cursor:not-allowed; }
+    .row { display:flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+    .log { white-space: pre-wrap; font-size: 12px; line-height: 1.35; }
+    .msgs { flex:1; overflow:auto; border:1px solid #1f2a37; border-radius: 12px; padding: 10px; background:#0f1720; }
+    .msg { margin: 8px 0; }
+    .me { color:#9cdcfe; }
+    .peer { color:#a7f3d0; }
+    .sys { color:#fbbf24; }
+    .muted { opacity:.8; }
+    .controls { display:flex; gap:8px; }
+    .controls input[type="text"]{ flex:1; }
+    .progress { height: 10px; background:#0b1220; border:1px solid #243244; border-radius:999px; overflow:hidden; }
+    .bar { height:100%; width:0%; background:#1f6feb; }
+    .small { font-size: 12px; opacity:.9; }
+    a { color: #9cdcfe; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>PucliChat</h1>
+  <div class="mono muted" id="status">DISCONNECTED</div>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="card">
+      <div class="small">合言葉（10分マッチング）</div>
+      <label>合言葉</label>
+      <input id="password" type="password" placeholder="共通のパスワード" autocomplete="off" />
+      <label>シグナリングWebSocket URL</label>
+      <input id="wsUrl" type="text" placeholder="wss://xxxxx.execute-api.ap-northeast-1.amazonaws.com/prod" />
+      <label>TURN ドメイン（coturn）</label>
+      <input id="turnHost" type="text" placeholder="turn.example.com" />
+      <div class="row" style="margin-top:12px;">
+        <button id="btnJoin">JOIN</button>
+        <button id="btnLeave" class="secondary" disabled>LEAVE</button>
+      </div>
+      <div style="margin-top:12px;" class="small">
+        接続後：<span class="mono" id="roomInfo">room:-</span><br/>
+        役割：<span class="mono" id="roleInfo">-</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="small">鍵確認コード（SAS）</div>
+      <div class="mono" id="sas">-</div>
+      <div class="small muted">相手と読み上げて一致を確認（任意）。</div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="small">ログ</div>
+      <div class="log mono" id="log"></div>
+    </div>
+  </section>
+
+  <section class="chat">
+    <div class="msgs" id="msgs"></div>
+
+    <div class="card">
+      <div class="controls">
+        <input id="text" type="text" placeholder="メッセージ" />
+        <button id="btnSend" disabled>送信</button>
+      </div>
+
+      <div style="margin-top:10px;" class="row">
+        <input id="file" type="file" />
+        <button id="btnSendFile" class="secondary" disabled>ファイル送信</button>
+      </div>
+
+      <div style="margin-top:10px;">
+        <div class="small">送信/受信 進捗</div>
+        <div class="progress"><div class="bar" id="progBar"></div></div>
+        <div class="small mono" id="progText">-</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="./app.js"></script>
+</body>
+</html>
