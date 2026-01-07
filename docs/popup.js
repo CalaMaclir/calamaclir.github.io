@@ -92,6 +92,18 @@ async function calcFingerprint(publicKey) {
   return b64;
 }
 
+// 既存のFPから4桁の数字を派生させる
+async function calcConfirmationKey(fingerprint) {
+  if (!fingerprint) return "----";
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(fingerprint));
+  const hashArray = new Uint8Array(hashBuffer);
+  // 先頭4バイトから数値を生成
+  const view = new DataView(hashArray.buffer);
+  const val = view.getUint32(0); 
+  return (val % 10000).toString().padStart(4, '0');
+}
+
 // ── UI補助関数 ──
 function showSpinner(text) {
   const spinner = document.getElementById('spinner');
@@ -641,43 +653,38 @@ document.getElementById('fileSelect').addEventListener('change', (e) => {
 });
 
 // ── 公開鍵ファイル入力 ──
+/**
+ * 公開鍵ファイル入力 (.pubkey XML) の処理
+ * 読み込み時に確認キーを表示するように改修済み
+ */
 const pubKeyListElem = document.getElementById('pubKeyList');
+
 document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
   const files = e.target.files;
+  
   for (let file of files) {
     const text = await file.text();
     try {
+      // 1. XMLから公開鍵オブジェクトをインポート
       const pubKey = await importPublicKeyFromXmlUnified(text, file.name);
+      
+      // 2. 暗号化対象の鍵リスト（配列）に追加
       encryptionPublicKeys.push(pubKey);
       
-      const li = document.createElement('li');
-      const keyInfoDiv = document.createElement('div');
-      keyInfoDiv.textContent = `${pubKey.name} (${pubKey.type})`;
-      const br = document.createElement('br');
-      const fpSpan = document.createElement('span');
-      fpSpan.style.fontSize = '0.91em';
-      fpSpan.style.color = '#777';
-      fpSpan.textContent = `${t('fingerprint')}: ${pubKey.fingerprint}`;
-      const copyBtn = document.createElement('button');
-      copyBtn.textContent = t('copy');
-      copyBtn.style.marginLeft = '6px';
-      copyBtn.style.fontSize = '0.9em';
-      copyBtn.style.padding = '2px 8px';
-      copyBtn.onclick = () => {
-          navigator.clipboard.writeText(pubKey.fingerprint);
-          alert(t('copied'));
-      };
+      // 3. [改修箇所] 共通関数を使用して確認キー付きのUI要素を作成
+      // 内部で calcConfirmationKey を呼び出し、4桁の数字を表示します
+      const li = await createPubKeyListItem(pubKey);
       
-      li.appendChild(keyInfoDiv);
-      li.appendChild(br);
-      li.appendChild(fpSpan);
-      li.appendChild(copyBtn);
-      
+      // 4. 暗号化セクションのリストへ追加
       pubKeyListElem.appendChild(li);
+      
     } catch(err) {
-      alert(t('alert_import_pub_err', {name: file.name}) + err.message);
+      // エラーメッセージの多言語対応
+      alert(t('alert_import_pub_err', { name: file.name }) + err.message);
     }
   }
+  
+  // 連続して同じファイルを選択できるようにリセット
   e.target.value = "";
 });
 
@@ -1335,17 +1342,24 @@ async function exportPubkeyUrl(name) {
 }
 
 // ── 鍵一覧の再表示 ──
-function refreshKeyList() {
+/**
+ * 鍵一覧の再表示 (非同期版)
+ * 確認キー (SAS: Short Authentication String) を目立たせる改修済み
+ */
+async function refreshKeyList() {
   const tbody = document.getElementById("keyTable").querySelector("tbody");
-  tbody.textContent = "";
+  tbody.textContent = ""; // テーブルの初期化
+
   for (const name in keyStore) {
     const tr = document.createElement("tr");
+
+    // 1. 鍵名カラム
     const tdName = document.createElement("td");
     tdName.textContent = name;
     tr.appendChild(tdName);
 
+    // 2. 種別カラム (表示用の分かりやすい名称に変換)
     const tdType = document.createElement("td");
-    // 表示用分岐
     if (keyStore[name].type === "EC") {
         tdType.textContent = "ECDH (P-521)";
     } else if (keyStore[name].type === X25519_ALGORITHM) {
@@ -1355,43 +1369,71 @@ function refreshKeyList() {
     }
     tr.appendChild(tdType);
 
+    // 3. 鍵情報カラム (ここを確認キー中心に改修)
     const tdKeyInfo = document.createElement("td");
-    // CurveとFingerprint表示
-    let curveName = keyStore[name].curve || "N/A";
-    const curveInfo = document.createTextNode(`Curve: ${curveName}`);
-    const br = document.createElement("br");
-    const fpSpan = document.createElement("span");
-    fpSpan.style.fontSize = "0.91em";
-    fpSpan.style.color = "#777";
-    fpSpan.textContent = `${t('fingerprint')}: ${keyStore[name].fingerprint ? keyStore[name].fingerprint : "N/A"}`;
-      
+    const fp = keyStore[name].fingerprint || "N/A";
+    const confKey = await calcConfirmationKey(fp); // 4桁の数字を生成
+    const curveName = keyStore[name].curve || "N/A";
+
+    // --- [最優先] 確認キー (SAS) 表示エリア ---
+    const confArea = document.createElement("div");
+    confArea.style.textAlign = "center";
+    confArea.style.padding = "4px";
+    confArea.style.backgroundColor = "#f0f2fa";
+    confArea.style.borderRadius = "8px";
+    confArea.style.marginBottom = "8px";
+    confArea.style.border = "1px solid var(--border)";
+    
+    confArea.innerHTML = `
+      <div style="font-size: 0.75em; color: #666; margin-bottom: 2px;">${t('conf_key')}</div>
+      <div style="font-size: 1.8em; font-weight: bold; color: var(--accent); letter-spacing: 3px;">${confKey}</div>
+    `;
+
+    // --- [補助] 詳細情報 (Curve名 & FP) 表示エリア ---
+    const detailArea = document.createElement("div");
+    detailArea.style.fontSize = "0.82em";
+    detailArea.style.color = "#777";
+    detailArea.style.lineHeight = "1.4";
+
+    const curveInfo = document.createElement("div");
+    curveInfo.textContent = `Curve: ${curveName}`;
+    detailArea.appendChild(curveInfo);
+
+    const fpInfo = document.createElement("div");
+    fpInfo.style.marginTop = "2px";
+    fpInfo.textContent = `FP: ${fp.substring(0, 12)}...`; // 先頭12文字のみ表示
+
+    // フルFPコピーボタン
     const copyBtn = document.createElement("button");
     copyBtn.textContent = t('copy');
     copyBtn.style.marginLeft = "6px";
-    copyBtn.style.fontSize = "0.9em";
-    copyBtn.style.padding = "2px 8px";
+    copyBtn.style.fontSize = "0.85em";
+    copyBtn.style.padding = "2px 6px";
     copyBtn.onclick = () => {
-        navigator.clipboard.writeText(keyStore[name].fingerprint);
+        navigator.clipboard.writeText(fp);
         alert(t('copied'));
     };
-      
-    tdKeyInfo.appendChild(curveInfo);
-    tdKeyInfo.appendChild(br);
-    tdKeyInfo.appendChild(fpSpan);
-    tdKeyInfo.appendChild(copyBtn);
+    fpInfo.appendChild(copyBtn);
+    detailArea.appendChild(fpInfo);
 
+    tdKeyInfo.appendChild(confArea);
+    tdKeyInfo.appendChild(detailArea);
     tr.appendChild(tdKeyInfo);
 
+    // 4. 操作カラム
     const tdOps = document.createElement("td");
 
+    // 公開鍵エクスポート
     const exportPubBtn = document.createElement("button");
     exportPubBtn.textContent = t('export_pub');
     exportPubBtn.onclick = () => exportKey(name, "public");
 
+    // URLで共有
     const exportPubUrlBtn = document.createElement("button");
     exportPubUrlBtn.textContent = t('share_url');
     exportPubUrlBtn.onclick = () => exportPubkeyUrl(name);
 
+    // 秘密鍵エクスポート (危険操作)
     const exportPrivBtn = document.createElement("button");
     exportPrivBtn.textContent = t('export_priv');
     exportPrivBtn.classList.add('export-privkey-btn');
@@ -1401,14 +1443,16 @@ function refreshKeyList() {
       }
     };
 
+    // 削除ボタン
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = t('delete');
     deleteBtn.onclick = () => deleteKey(name);
 
+    // カラムへの追加
     tdOps.appendChild(exportPubBtn);
     tdOps.appendChild(document.createTextNode(" "));
     tdOps.appendChild(exportPubUrlBtn);
-    tdOps.appendChild(document.createTextNode(" "));
+    tdOps.appendChild(document.createElement("br")); // 視認性向上のため改行
     tdOps.appendChild(exportPrivBtn);
     tdOps.appendChild(document.createTextNode(" "));
     tdOps.appendChild(deleteBtn);
@@ -1581,51 +1625,105 @@ function setBlocksDisplay(ids, displayStyle) {
   });
 }
 
+/**
+ * 暗号化セクションの公開鍵リスト用アイテム (li) を作成する
+ */
+async function createPubKeyListItem(pubKey) {
+  const li = document.createElement('li');
+  li.style.padding = "10px";
+  li.style.borderBottom = "1px solid #eee";
+  li.style.listStyle = "none";
+
+  const confKey = await calcConfirmationKey(pubKey.fingerprint);
+
+  // 確認キーを大きく表示
+  const confArea = document.createElement('div');
+  confArea.style.display = "flex";
+  confArea.style.alignItems = "center";
+  confArea.style.gap = "10px";
+  confArea.innerHTML = `
+    <span style="font-size:0.75em; color:#666;">${t('conf_key_short')}:</span>
+    <span style="font-size:1.4em; font-weight:bold; color:var(--accent);">${confKey}</span>
+  `;
+
+  // 鍵名とFP（詳細）
+  const infoArea = document.createElement('div');
+  infoArea.style.fontSize = "0.85em";
+  infoArea.style.color = "#555";
+  infoArea.innerHTML = `<strong>${pubKey.name}</strong> <span style="color:#999;">(${pubKey.type})</span>`;
+
+  const fpSpan = document.createElement('div');
+  fpSpan.style.fontSize = "0.8em";
+  fpSpan.style.color = "#999";
+  fpSpan.textContent = `FP: ${pubKey.fingerprint.substring(0, 12)}...`;
+
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = t('copy');
+  copyBtn.style.fontSize = "0.8em";
+  copyBtn.style.padding = "2px 5px";
+  copyBtn.style.marginLeft = "8px";
+  copyBtn.onclick = () => {
+      navigator.clipboard.writeText(pubKey.fingerprint);
+      alert(t('copied'));
+  };
+
+  li.appendChild(confArea);
+  li.appendChild(infoArea);
+  infoArea.appendChild(fpSpan);
+  fpSpan.appendChild(copyBtn);
+
+  return li;
+}
+
+/**
+ * ページ起動時: URLハッシュから公開鍵を読み込む
+ * 確認キー（SAS）の計算とUI表示への統合済み
+ */
 async function tryLoadPubkeyFromHash() {
   if (location.hash.startsWith("#pubkey=")) {
     try {
       let hash = location.hash.slice(1);
-      let params = new URLSearchParams(hash.replace(/&/g,'&'));
+      // URLSearchParamsでパース（&が含まれる場合を考慮）
+      let params = new URLSearchParams(hash.replace(/&/g, '&'));
       let b64url = params.get('pubkey');
       let expectedFp = params.get('fp');
 
       if (!b64url) throw "Public key data not found";
+
+      // Base64Url形式からXML文字列へデコード
       const b64 = base64UrlToBase64(b64url);
       const bin = atob(b64);
       const uint8 = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; ++i) uint8[i] = bin.charCodeAt(i);
       const xml = new TextDecoder().decode(uint8);
+
+      // 公開鍵としてインポート
       const pubKey = await importPublicKeyFromXmlUnified(xml, "URL受信公開鍵");
       encryptionPublicKeys.push(pubKey);
 
+      // フィンガープリントの一致確認
       if (expectedFp && pubKey.fingerprint !== expectedFp) {
-        alert(t('alert_url_pub_mismatch', {expected: expectedFp, actual: pubKey.fingerprint}));
+        // 不一致の場合は警告を表示
+        alert(t('alert_url_pub_mismatch', {
+          expected: expectedFp, 
+          actual: pubKey.fingerprint
+        }));
       } else {
-        const li = document.createElement('li');
-        const keyInfoDiv = document.createElement('div');
-        keyInfoDiv.textContent = `${pubKey.name} (${pubKey.type})`;
-        const br = document.createElement('br');
-        const fpSpan = document.createElement('span');
-        fpSpan.style.fontSize = "0.91em";
-        fpSpan.style.color = "#777";
-        fpSpan.textContent = `${t('fingerprint')}: ${pubKey.fingerprint}`;
-        const copyBtn = document.createElement('button');
-        copyBtn.textContent = t('copy');
-        copyBtn.style.marginLeft = "6px";
-        copyBtn.style.fontSize = "0.9em";
-        copyBtn.style.padding = "2px 8px";
-        copyBtn.onclick = () => {
-            navigator.clipboard.writeText(pubKey.fingerprint);
-            alert(t('copied'));
-        };
-        
-        li.appendChild(keyInfoDiv);
-        li.appendChild(br);
-        li.appendChild(fpSpan);
-        li.appendChild(copyBtn);
-        
+        // --- [改修箇所] 確認キーの算出とリスト表示 ---
+        const confKey = await calcConfirmationKey(pubKey.fingerprint);
+
+        // 暗号化セクションのリストにアイテムを追加
+        const li = await createPubKeyListItem(pubKey);
         document.getElementById('pubKeyList').appendChild(li);
-        alert(t('alert_url_pub_ok', {fp: pubKey.fingerprint}));
+
+        // 成功通知と確認キーの強調表示
+        alert(`✅ ${t('alert_url_pub_ok', { fp: pubKey.fingerprint })}\n\n` +
+              `--------------------------\n` +
+              `【 ${t('conf_key')}: ${confKey} 】\n` +
+              `--------------------------\n` +
+              `相手が提示した数字と一致することを確認してください。`);
+
+        // 受信専用モードとして、不要なUIブロックを非表示にする
         setBlocksDisplay(HIDEABLE_UI_BLOCK_IDS, "none");
       }
     } catch (e) {
@@ -1667,7 +1765,10 @@ function createMagicLink() {
   exportArea.appendChild(button);
 }
 
-// マジックリンク受け取り側
+/**
+ * マジックリンク受け取り側（ウィザード画面）の処理
+ * 確認キーの表示機能を追加
+ */
 async function checkMagicLinkRequest() {
   if (!location.hash.includes(`${MAGIC_REQ_PARAM}=1`)) return;
 
@@ -1692,11 +1793,9 @@ async function checkMagicLinkRequest() {
 
     try {
       const now = new Date();
-	  const keyName = `Guest_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}`;
+      const keyName = `Guest_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}`;
       
-      // X25519を使用 (マジックリンクはモダン環境前提で良い場合)
-      // または "EC" にするかは要件によりますが、ここではデフォルトでX25519を使うように変更します
-      // もしP-521を維持したい場合は "EC" に戻してください
+      // 鍵ペア生成
       await generateKeyPair(keyName, X25519_ALGORITHM); 
       
       const keyPair = keyStore[keyName];
@@ -1707,6 +1806,9 @@ async function checkMagicLinkRequest() {
       const b64url = base64ToBase64Url(b64);
       const fingerprint = keyPair.fingerprint;
 
+      // --- [追加] 確認キーの派生 ---
+      const confKey = await calcConfirmationKey(fingerprint);
+
       const replyUrl = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
 
       document.getElementById('wizardStep1').style.display = 'none';
@@ -1714,6 +1816,27 @@ async function checkMagicLinkRequest() {
       resultArea.style.display = 'block';
       
       document.getElementById('wizardDoneMsg').textContent = t('wizard_step_done');
+
+      // --- [追加] UIへの確認キー表示 ---
+      let confKeyDisplay = document.getElementById('wizardConfKeyDisplay');
+      if (!confKeyDisplay) {
+          confKeyDisplay = document.createElement('div');
+          confKeyDisplay.id = 'wizardConfKeyDisplay';
+          confKeyDisplay.style.margin = "20px auto";
+          confKeyDisplay.style.padding = "15px";
+          confKeyDisplay.style.background = "#fff";
+          confKeyDisplay.style.borderRadius = "12px";
+          confKeyDisplay.style.border = "2px solid var(--accent)";
+          confKeyDisplay.style.maxWidth = "200px";
+          confKeyDisplay.style.boxShadow = "0 2px 8px rgba(0,0,0,0.05)";
+          // 説明文の前に挿入
+          resultArea.insertBefore(confKeyDisplay, document.getElementById('wizardReplyInst'));
+      }
+      confKeyDisplay.innerHTML = `
+        <div style="font-size:0.85em; color:#666; margin-bottom:5px;">${t('conf_key')}</div>
+        <div style="font-size:2.2em; font-weight:bold; color:var(--accent); letter-spacing:5px;">${confKey}</div>
+      `;
+      
       document.getElementById('wizardReplyInst').textContent = t('wizard_reply_inst');
       
       const replyInput = document.getElementById('wizardReplyUrl');
@@ -1733,6 +1856,7 @@ async function checkMagicLinkRequest() {
     }
   };
 }
+
 
 // ── 復号誘導モード ──
 function checkDecryptMode() {
