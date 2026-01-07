@@ -12,9 +12,25 @@ const MAGIC_REQ_PARAM = "magic_req";
 const MAGIC_SENDER_PARAM = "sender";
 const DECRYPT_MODE_HASH = "decrypt_mode";
 
+// ── 暗号ファイル v2（後方互換: 旧ファイルも復号可能） ──
+// 旧フォーマット: [entryCount][entries...][iv12][payloadEnc]
+// 新フォーマット: [entryCount][entries...][MAGIC4][fileNonce16][iv12][payloadEnc]
+// - MAGIC4 は v2 判定用（旧実装は読めないが、新実装は旧/新どちらも復号できる）
+// - fileNonce16 は HKDF の salt 兼、誤復号・誤解釈の事故低減に使う
+const FILE_V2_MAGIC = new Uint8Array([0x50, 0x43, 0x32, 0x00]); // "PC2\0"
+const FILE_NONCE_LENGTH = 16;
+
 // ファイルヘッダーのエントリータイプ
 const ENTRY_TYPE_P521 = 1;
 const ENTRY_TYPE_X25519 = 2; // 追加: X25519用の識別子
+
+// v2 追加ブロック
+const FILE_V2_MARKER = new Uint8Array([0x50, 0x43, 0x32, 0x00]); // "PC2\0"
+
+
+// HKDF info 固定プレフィックス（将来互換のため文字列を固定）
+const HKDF_INFO_WRAP_PREFIX = "PubliCrypt|wrap|v2|";
+const HKDF_INFO_PAYLOAD_PREFIX = "PubliCrypt|payload|v2";
 
 // ── i18n リソース (UI表示用) ──
 // ★ resources オブジェクトは i18n.js に移動したため削除 ★
@@ -197,6 +213,66 @@ function base64ToUint8Array(b64) {
   return bytes;
 }
 
+// ── クリプト補助（v2） ──
+async function sha256Bytes(u8) {
+  const buf = await crypto.subtle.digest("SHA-256", (u8 instanceof Uint8Array) ? u8 : new Uint8Array(u8));
+  return new Uint8Array(buf);
+}
+
+// JWK import 時の互換化（key_ops衝突回避）
+function normalizeJwkForImport(jwk) {
+  // structuredClone があればそれを優先でもOK
+  const copy = (typeof structuredClone === "function")
+    ? structuredClone(jwk)
+    : JSON.parse(JSON.stringify(jwk));
+  // WebCrypto の importKey(usages) と衝突しやすいので落とす
+  delete copy.key_ops;
+  // ついでに衝突源になりやすいフィールドも落として安全側
+  delete copy.use;
+  delete copy.alg;
+  return copy;
+}
+
+
+function eqBytes(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+async function deriveAesGcmKeyFromSharedSecret(sharedSecretU8, saltU8, infoU8, usages) {
+  // HKDF-Extract/Expand を WebCrypto で実施し、AES-256-GCM 鍵へ
+  const hkdfKey = await crypto.subtle.importKey(
+    "raw",
+    sharedSecretU8,
+    "HKDF",
+    false,
+    ["deriveKey"]
+  );
+  return await crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: saltU8,
+      info: infoU8,
+    },
+    hkdfKey,
+    { name: AES_ALGORITHM, length: AES_KEY_LENGTH },
+    false,
+    usages
+  );
+}
+
+async function deriveSharedSecretBits(algType, privateKey, publicKey) {
+  // ECDH/X25519 ともに 256bit を IKM として使う（HKDF で安全側へ寄せる）
+  const bits = await crypto.subtle.deriveBits(
+    { name: algType, public: publicKey },
+    privateKey,
+    256
+  );
+  return new Uint8Array(bits);
+}
+
 // ── IndexedDB 関連 ──
 function initDB() {
   const request = indexedDB.open("PubliCryptDB", 2);
@@ -266,7 +342,7 @@ async function loadKeysFromDB() {
       // 既存の EC (P-521) 読み込み
       if (record.publicKeyJwk && record.type === "EC") {
         const pubKey = await crypto.subtle.importKey(
-          "jwk", record.publicKeyJwk,
+          "jwk", normalizeJwkForImport(record.publicKeyJwk),
           { name: EC_ALGORITHM, namedCurve: record.publicKeyJwk.crv },
           true, []
         );
@@ -277,9 +353,9 @@ async function loadKeysFromDB() {
       }
       if (record.privateKeyJwk && record.type === "EC") {
         const privKey = await crypto.subtle.importKey(
-          "jwk", record.privateKeyJwk,
+          "jwk", normalizeJwkForImport(record.privateKeyJwk),
           { name: EC_ALGORITHM, namedCurve: record.publicKeyJwk.crv },
-          true, ["deriveKey"]
+          true, ["deriveKey", "deriveBits"]
         );
         const raw = await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey);
         const identifier = arrayBufferToBase64(raw);
@@ -291,7 +367,7 @@ async function loadKeysFromDB() {
       if (record.publicKeyJwk && record.type === X25519_ALGORITHM) {
         // X25519は namedCurve 不要、 name: "X25519"
         const pubKey = await crypto.subtle.importKey(
-            "jwk", record.publicKeyJwk,
+            "jwk", normalizeJwkForImport(record.publicKeyJwk),
             { name: X25519_ALGORITHM },
             true, []
         );
@@ -302,9 +378,9 @@ async function loadKeysFromDB() {
       }
       if (record.privateKeyJwk && record.type === X25519_ALGORITHM) {
         const privKey = await crypto.subtle.importKey(
-            "jwk", record.privateKeyJwk,
+            "jwk", normalizeJwkForImport(record.privateKeyJwk),
             { name: X25519_ALGORITHM },
-            true, ["deriveKey"]
+            true, ["deriveKey", "deriveBits"]
         );
         const raw = await crypto.subtle.exportKey("raw", keyStore[record.name].publicKey);
         const identifier = arrayBufferToBase64(raw);
@@ -330,7 +406,7 @@ async function importPublicKeyFromXmlEC(xmlDoc, fileName, curve) {
   
   const jwk = { kty: "EC", crv: curve, x: x, y: y, ext: true };
   const cryptoKey = await crypto.subtle.importKey(
-    "jwk", jwk,
+    "jwk", normalizeJwkForImport(jwk),
     { name: EC_ALGORITHM, namedCurve: curve },
     true, []
   );
@@ -348,7 +424,7 @@ async function importPublicKeyFromXmlX25519(xmlDoc, fileName) {
 
     const jwk = { kty: "OKP", crv: X25519_ALGORITHM, x: x, ext: true };
     const cryptoKey = await crypto.subtle.importKey(
-        "jwk", jwk,
+        "jwk", normalizeJwkForImport(jwk),
         { name: X25519_ALGORITHM },
         true, []
     );
@@ -366,13 +442,13 @@ async function importPrivateKeyFromXmlEC(xmlDoc, fileName, curve) {
   
   const jwkPrivate = { kty: "EC", crv: curve, x: x, y: y, d: d, ext: true };
   const privateCryptoKey = await crypto.subtle.importKey(
-    "jwk", jwkPrivate,
+    "jwk", normalizeJwkForImport(jwkPrivate),
     { name: EC_ALGORITHM, namedCurve: curve },
-    true, ["deriveKey"]
+    true, ["deriveKey", "deriveBits"]
   );
   const publicJwk = { kty: "EC", crv: curve, x: x, y: y, ext: true };
   const publicCryptoKey = await crypto.subtle.importKey(
-    "jwk", publicJwk,
+    "jwk", normalizeJwkForImport(publicJwk),
     { name: EC_ALGORITHM, namedCurve: curve },
     true, []
   );
@@ -391,13 +467,13 @@ async function importPrivateKeyFromXmlX25519(xmlDoc, fileName) {
 
     const jwkPrivate = { kty: "OKP", crv: X25519_ALGORITHM, x: x, d: d, ext: true };
     const privateCryptoKey = await crypto.subtle.importKey(
-        "jwk", jwkPrivate,
+        "jwk", normalizeJwkForImport(jwkPrivate),
         { name: X25519_ALGORITHM },
-        true, ["deriveKey"]
+        true, ["deriveKey", "deriveBits"]
     );
     const publicJwk = { kty: "OKP", crv: X25519_ALGORITHM, x: x, ext: true };
     const publicCryptoKey = await crypto.subtle.importKey(
-        "jwk", publicJwk,
+        "jwk", normalizeJwkForImport(publicJwk),
         { name: X25519_ALGORITHM },
         true, []
     );
@@ -659,6 +735,8 @@ async function encryptFile(file) {
     true, ["encrypt", "decrypt"]
   );
   const aesKeyRaw = new Uint8Array(await crypto.subtle.exportKey("raw", aesKey));
+  // v2: ファイル単位の salt（HKDF）
+  const fileNonce = window.crypto.getRandomValues(new Uint8Array(FILE_NONCE_LENGTH));
   const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
 
   if (encryptionPublicKeys.length === 0) {
@@ -682,24 +760,34 @@ async function encryptFile(file) {
       try {
         const ephemeralKeyPair = await crypto.subtle.generateKey(
           { name: EC_ALGORITHM, namedCurve: pub.curve },
-          true, ["deriveKey"]
+          true, ["deriveBits"]
         );
-        const wrappingKey = await crypto.subtle.deriveKey(
-          { name: EC_ALGORITHM, public: pub.cryptoKey },
-          ephemeralKeyPair.privateKey,
-          { name: AES_ALGORITHM, length: 256 },
-          false, ["encrypt", "decrypt"]
-        );
-        const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
+        // v2: 共有秘密→HKDF→AES-GCM鍵（ヘッダ情報にバインド）
         const wrappingIV = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
+        const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
+        const recipientIdBytes = base64ToUint8Array(pub.identifier);
+        const wrappingAAD = concatUint8Arrays([
+          new Uint8Array([ENTRY_TYPE_P521]),
+          writeInt32LE(recipientIdBytes.length),
+          recipientIdBytes,
+          writeInt32LE(ephemeralPubRaw.length),
+          ephemeralPubRaw,
+          wrappingIV,
+          fileNonce
+        ]);
+        const wrappingInfo = await sha256Bytes(concatUint8Arrays([
+          new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "P-521"),
+          wrappingAAD
+        ]));
+        const sharedSecret = await deriveSharedSecretBits(EC_ALGORITHM, ephemeralKeyPair.privateKey, pub.cryptoKey);
+        const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt", "decrypt"]);
         const wrappingCiphertextBuffer = await crypto.subtle.encrypt(
-          { name: AES_ALGORITHM, iv: wrappingIV },
+          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
           wrappingKey,
           aesKeyRaw
         );
         const wrappingCiphertext = new Uint8Array(wrappingCiphertextBuffer);
         const wrappingOutput = concatUint8Arrays([wrappingIV, wrappingCiphertext]);
-        const recipientIdBytes = base64ToUint8Array(pub.identifier);
         
         entries.push({
           type: ENTRY_TYPE_P521, // Type 1
@@ -716,26 +804,34 @@ async function encryptFile(file) {
         try {
             const ephemeralKeyPair = await crypto.subtle.generateKey(
               { name: X25519_ALGORITHM },
-              true, ["deriveKey"]
+              true, ["deriveBits"]
             );
-            // X25519での deriveKey
-            const wrappingKey = await crypto.subtle.deriveKey(
-              { name: X25519_ALGORITHM, public: pub.cryptoKey },
-              ephemeralKeyPair.privateKey,
-              { name: AES_ALGORITHM, length: 256 },
-              false, ["encrypt", "decrypt"]
-            );
-            
-            const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
             const wrappingIV = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
+            const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
+            const recipientIdBytes = base64ToUint8Array(pub.identifier);
+            const wrappingAAD = concatUint8Arrays([
+              new Uint8Array([ENTRY_TYPE_X25519]),
+              writeInt32LE(recipientIdBytes.length),
+              recipientIdBytes,
+              writeInt32LE(ephemeralPubRaw.length),
+              ephemeralPubRaw,
+              wrappingIV,
+              fileNonce
+            ]);
+            const wrappingInfo = await sha256Bytes(concatUint8Arrays([
+              new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "X25519"),
+              wrappingAAD
+            ]));
+            const sharedSecret = await deriveSharedSecretBits(X25519_ALGORITHM, ephemeralKeyPair.privateKey, pub.cryptoKey);
+            const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt", "decrypt"]);
+
             const wrappingCiphertextBuffer = await crypto.subtle.encrypt(
-              { name: AES_ALGORITHM, iv: wrappingIV },
+              { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
               wrappingKey,
               aesKeyRaw
             );
             const wrappingCiphertext = new Uint8Array(wrappingCiphertextBuffer);
             const wrappingOutput = concatUint8Arrays([wrappingIV, wrappingCiphertext]);
-            const recipientIdBytes = base64ToUint8Array(pub.identifier);
 
             entries.push({
               type: ENTRY_TYPE_X25519, // Type 2 (新規)
@@ -757,11 +853,8 @@ async function encryptFile(file) {
   const fileBuffer = new Uint8Array(await file.arrayBuffer());
   const fileNameBytes = encoder.encode(file.name);
   const payloadPlain = concatUint8Arrays([writeInt32LE(fileNameBytes.length), fileNameBytes, fileBuffer]);
-  const payloadEnc = new Uint8Array(await crypto.subtle.encrypt(
-    { name: AES_ALGORITHM, iv: iv },
-    aesKey,
-    payloadPlain
-  ));
+  // v2: payload はヘッダ全体をAADにする（改ざん・取り違え検知）
+  // まずヘッダ（entries + marker + fileNonce + iv）を組み立ててから暗号化する
   
   let parts = [];
   parts.push(writeInt32LE(entries.length));
@@ -776,7 +869,25 @@ async function encryptFile(file) {
       parts.push(entry.wrappingOutput);
     }
   }
+  // v2 拡張: marker + fileNonce を iv の前に入れる
+  parts.push(FILE_V2_MARKER);
+  parts.push(fileNonce);
   parts.push(iv);
+
+  const headerBytes = concatUint8Arrays(parts); // payloadEnc 以外の全ヘッダ
+  const payloadInfo = await sha256Bytes(concatUint8Arrays([
+    new TextEncoder().encode(HKDF_INFO_PAYLOAD_PREFIX),
+    headerBytes
+  ]));
+  // payload鍵は既存のランダムAES鍵のまま。infoは将来の「鍵派生方式差し替え」用に予約（今はAADのみ効かせる）
+  void payloadInfo; // lint回避（将来用）
+
+  const payloadEnc = new Uint8Array(await crypto.subtle.encrypt(
+    { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes) },
+    aesKey,
+    payloadPlain
+  ));
+
   parts.push(payloadEnc);
   const finalData = concatUint8Arrays(parts);
   const blob = new Blob([finalData], { type: "application/octet-stream" });
@@ -824,11 +935,27 @@ async function decryptFile(file) {
         throw new Error("Unknown key entry type.");
       }
     }
+    // v2判定: entries の直後に marker がある場合は v2
+    let isV2 = false;
+    let fileNonce = null;
+    if (offset + FILE_V2_MARKER.length <= fileBuffer.length) {
+      const marker = fileBuffer.slice(offset, offset + FILE_V2_MARKER.length);
+      if (eqBytes(marker, FILE_V2_MARKER)) {
+        isV2 = true;
+        offset += FILE_V2_MARKER.length;
+        if (offset + FILE_NONCE_LENGTH + AES_IV_LENGTH > fileBuffer.length) {
+          throw new Error("Invalid file.");
+        }
+        fileNonce = fileBuffer.slice(offset, offset + FILE_NONCE_LENGTH);
+        offset += FILE_NONCE_LENGTH;
+      }
+    }
     if (offset + AES_IV_LENGTH > fileBuffer.length) {
       throw new Error("Invalid file.");
     }
     const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH);
     offset += AES_IV_LENGTH;
+    const headerBytes = isV2 ? fileBuffer.slice(0, offset) : null;
     const payloadEnc = fileBuffer.slice(offset);
     let aesKeyRaw;
     let found = false;
@@ -845,20 +972,47 @@ async function decryptFile(file) {
               { name: EC_ALGORITHM, namedCurve: keyStore[priv.name].curve },
               true, []
             );
-            const wrappingKey = await crypto.subtle.deriveKey(
-              { name: EC_ALGORITHM, public: ephemeralPubKey },
-              priv.cryptoKey,
-              { name: AES_ALGORITHM, length: 256 },
-              false, ["decrypt"]
-            );
             const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
             const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
             try {
-              const decrypted = await crypto.subtle.decrypt(
-                { name: AES_ALGORITHM, iv: wrappingIV },
-                wrappingKey,
-                wrappingCiphertext
-              );
+              let decrypted;
+              if (isV2) {
+                // v2: sharedSecret→HKDF で wrappingKey を作り、AAD を付与
+                const recipientIdBytes = entry.recipientId;
+                const wrappingAAD = concatUint8Arrays([
+                  new Uint8Array([ENTRY_TYPE_P521]),
+                  writeInt32LE(recipientIdBytes.length),
+                  recipientIdBytes,
+                  writeInt32LE(entry.ephemeralPub.length),
+                  entry.ephemeralPub,
+                  new Uint8Array(wrappingIV),
+                  new Uint8Array(fileNonce)
+                ]);
+                const wrappingInfo = await sha256Bytes(concatUint8Arrays([
+                  new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "P-521"),
+                  wrappingAAD
+                ]));
+                const sharedSecret = await deriveSharedSecretBits(EC_ALGORITHM, priv.cryptoKey, ephemeralPubKey);
+                const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, new Uint8Array(fileNonce), wrappingInfo, ["decrypt"]);
+                decrypted = await crypto.subtle.decrypt(
+                  { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
+                  wrappingKey,
+                  wrappingCiphertext
+                );
+              } else {
+                // 旧: deriveKey + AADなし
+                const wrappingKey = await crypto.subtle.deriveKey(
+                  { name: EC_ALGORITHM, public: ephemeralPubKey },
+                  priv.cryptoKey,
+                  { name: AES_ALGORITHM, length: 256 },
+                  false, ["decrypt"]
+                );
+                decrypted = await crypto.subtle.decrypt(
+                  { name: AES_ALGORITHM, iv: wrappingIV },
+                  wrappingKey,
+                  wrappingCiphertext
+                );
+              }
               aesKeyRaw = new Uint8Array(decrypted);
               found = true;
               break;
@@ -875,20 +1029,45 @@ async function decryptFile(file) {
                       { name: X25519_ALGORITHM },
                       true, []
                   );
-                  const wrappingKey = await crypto.subtle.deriveKey(
-                      { name: X25519_ALGORITHM, public: ephemeralPubKey },
-                      priv.cryptoKey,
-                      { name: AES_ALGORITHM, length: 256 },
-                      false, ["decrypt"]
-                  );
                   const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
                   const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
                   try {
-                      const decrypted = await crypto.subtle.decrypt(
+                      let decrypted;
+                      if (isV2) {
+                        const recipientIdBytes = entry.recipientId;
+                        const wrappingAAD = concatUint8Arrays([
+                          new Uint8Array([ENTRY_TYPE_X25519]),
+                          writeInt32LE(recipientIdBytes.length),
+                          recipientIdBytes,
+                          writeInt32LE(entry.ephemeralPub.length),
+                          entry.ephemeralPub,
+                          new Uint8Array(wrappingIV),
+                          new Uint8Array(fileNonce)
+                        ]);
+                        const wrappingInfo = await sha256Bytes(concatUint8Arrays([
+                          new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "X25519"),
+                          wrappingAAD
+                        ]));
+                        const sharedSecret = await deriveSharedSecretBits(X25519_ALGORITHM, priv.cryptoKey, ephemeralPubKey);
+                        const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, new Uint8Array(fileNonce), wrappingInfo, ["decrypt"]);
+                        decrypted = await crypto.subtle.decrypt(
+                          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
+                          wrappingKey,
+                          wrappingCiphertext
+                        );
+                      } else {
+                        const wrappingKey = await crypto.subtle.deriveKey(
+                          { name: X25519_ALGORITHM, public: ephemeralPubKey },
+                          priv.cryptoKey,
+                          { name: AES_ALGORITHM, length: 256 },
+                          false, ["decrypt"]
+                        );
+                        decrypted = await crypto.subtle.decrypt(
                           { name: AES_ALGORITHM, iv: wrappingIV },
                           wrappingKey,
                           wrappingCiphertext
-                      );
+                        );
+                      }
                       aesKeyRaw = new Uint8Array(decrypted);
                       found = true;
                       break;
@@ -906,7 +1085,15 @@ async function decryptFile(file) {
     const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
     let payloadPlainBuffer;
     try {
-      payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
+      if (isV2) {
+        payloadPlainBuffer = await crypto.subtle.decrypt(
+          { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes) },
+          aesKey,
+          payloadEnc
+        );
+      } else {
+        payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
+      }
     } catch (err) {
       throw new Error("AES decryption failed: " + err.message);
     }
