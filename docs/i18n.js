@@ -116,6 +116,8 @@ const resources = {
     email_template_subject: "暗号化ファイルの送付",
     email_template_body: "暗号化したファイルを送ります。\n添付のファイルをダウンロードした後、以下のリンクを開いてファイルをドラッグ＆ドロップしてください。\n自動的にあなたの秘密鍵を使って復号されます。\n\n復号ツール: {url}",
     btn_copy_email: "メッセージをコピー",
+    conf_key: "確認キー",
+    conf_key_short: "確認用"
   },
   en: {
     app_desc: "File encryption/decryption Chrome extension using public key cryptography.<br>Manage keys and encrypt/decrypt files easily.<br>Keys are stored in IndexedDB within the browser, and all processing is done locally.",
@@ -232,7 +234,9 @@ const resources = {
     enc_next_step_desc: "When sending the encrypted file, include this message to help the recipient decrypt it easily.",
     email_template_subject: "Encrypted File Attached",
     email_template_body: "I am sending you an encrypted file.\nPlease download the attached file, then open the link below and drop the file there.\nIt will be decrypted using your private key automatically.\n\nDecryption Tool: {url}",
-    btn_copy_email: "Copy Message"
+    btn_copy_email: "Copy Message",
+    conf_key: "Confirmation Key",
+    conf_key_short: "Verify"
   },
   fr: {
     app_desc: "Extension Chrome de chiffrement et déchiffrement de fichiers utilisant la cryptographie à clé publique.<br>Gérez vos clés et chiffrez/déchiffrez des fichiers facilement.<br>Les clés sont stockées dans IndexedDB dans votre navigateur, et tout le traitement est effectué localement.",
@@ -349,7 +353,9 @@ const resources = {
     enc_next_step_desc: "Lorsque vous envoyez le fichier chiffré, incluez ce message pour aider le destinataire.",
     email_template_subject: "Fichier chiffré joint",
     email_template_body: "Je vous envoie un fichier chiffré.\nTéléchargez le fichier joint, puis ouvrez le lien ci-dessous et déposez-y le fichier.\nIl sera déchiffré automatiquement avec votre clé privée.\n\nOutil de déchiffrement : {url}",
-    btn_copy_email: "Copier le message"
+    btn_copy_email: "Copier le message",
+    conf_key: "Clé de confirmation",
+    conf_key_short: "Vérifier"
   },
   lb: {
     app_desc: "Chrome-Extensioun fir Verschlësselung an Entschlësselung vun Dateien mat ëffentleche Schlësselen.<br>Verwalten Är Schlësselen an verschlësselt/entschlësselt Dateien einfach.<br>D'Schlëssel ginn an der IndexedDB an Ärem Browser gespäichert, an all Veraarbechtung gëtt lokal gemaach.",
@@ -466,6 +472,8 @@ const resources = {
     enc_next_step_desc: "Wann Dir déi verschlësselt Datei schéckt, enthält dëse Message fir dem Empfänger ze hëllefen.",
     email_template_subject: "Verschlësselt Datei ugehaang",
     email_template_body: "Ech schécken Iech eng verschlësselt Datei.\nLuet déi ugehaangen Datei erof, öffnet dann de Link hei ënnen a leet d'Datei do of.\nEt gëtt automatesch mat Ärem privaten Schlëssel entschlësselt.\n\nEntschlësselungsinstrument: {url}",
-    btn_copy_email: "Message kopéieren"
+    btn_copy_email: "Message kopéieren",
+    conf_key: "Bestätegungsschlëssel",
+    conf_key_short: "Iwwerpréiwen"
   }
 };
