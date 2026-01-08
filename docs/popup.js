@@ -52,6 +52,20 @@ const HIDEABLE_UI_BLOCK_IDS = [
   'magicLinkSection'
 ];
 
+let isX25519Supported = false;
+
+// ── X25519 サポート検出 ──
+async function checkX25519Support() {
+  try {
+    // 実際に鍵生成を試みてブラウザの対応状況を確認
+    await crypto.subtle.generateKey({ name: X25519_ALGORITHM }, false, ["deriveBits"]);
+    isX25519Supported = true;
+  } catch (e) {
+    isX25519Supported = false;
+    console.warn("X25519 is not supported in this environment.");
+  }
+}
+
 // ── i18n ヘルパー ──
 function t(key, params = {}) {
   let text = resources[currentLang][key] || resources['en'][key] || key;
@@ -144,7 +158,8 @@ function resetUI() {
   hideSpinner();
   clearExportArea();
   
-  history.replaceState(null, null, ' ');
+// 修正: 空白ではなくURLパスを維持してハッシュを消去
+  history.replaceState(null, null, window.location.pathname);
 
   const wizard = document.getElementById('magicLinkWizard');
   if (wizard) wizard.style.display = 'none';
@@ -196,14 +211,17 @@ function concatUint8Arrays(arrays) {
   arrays.forEach(arr => { result.set(arr, offset); offset += arr.length; });
   return result;
 }
-function writeInt32LE(val) {
+
+// 修正: 符号なし32bit (Uint32) を使用
+function writeUint32LE(val) {
   const buf = new ArrayBuffer(4);
-  new DataView(buf).setInt32(0, val, true);
+  new DataView(buf).setUint32(0, val, true);
   return new Uint8Array(buf);
 }
-function readInt32LE(view, offset) {
-  return view.getInt32(offset, true);
+function readUint32LE(view, offset) {
+  return view.getUint32(offset, true);
 }
+
 function base64ToBase64Url(b64) {
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -540,50 +558,47 @@ async function checkFileDecryptability(file) {
     
     let offset = 0;
     
+    // 最小サイズチェック (EntryCount 4byte)
     if (buffer.byteLength < 4) return { status: 'UNKNOWN', message: t('status_unknown') };
-    const entryCount = readInt32LE(view, offset);
+    const entryCount = readUint32LE(view, offset);
     offset += 4;
 
-    if (entryCount < 0 || entryCount > 1000) {
+    // 異常なエントリー数のチェック
+    if (entryCount === 0 || entryCount > 1000) {
       return { status: 'UNKNOWN', message: t('status_unencrypted') };
     }
-
     for (let i = 0; i < entryCount; i++) {
-      if (offset >= buffer.byteLength) break;
-      
+      if (offset + 1 > uint8.length) break; // fileBufferではなくuint8を参照
       const type = uint8[offset];
       offset += 1;
       
-      // Type 1: EC(P-521), Type 2: X25519
-      if (type === ENTRY_TYPE_P521 || type === ENTRY_TYPE_X25519) { 
-        if (offset + 4 > buffer.byteLength) break;
-        const idLen = readInt32LE(view, offset);
+      if (type === ENTRY_TYPE_P521 || type === ENTRY_TYPE_X25519) {
+        if (offset + 4 > uint8.length) break;
+        const idLen = readUint32LE(view, offset);
         offset += 4;
-        
-        if (offset + idLen > buffer.byteLength) break;
+        if (offset + idLen > uint8.length) break;
         const recipientId = uint8.slice(offset, offset + idLen);
-        const recipientIdB64 = arrayBufferToBase64(recipientId);
+        const recipientIdB64 = arrayBufferToBase64(recipientId); // IDを比較用に変換
         offset += idLen;
 
+        // ここで自分の鍵と一致するかチェック
         const matchedKey = importedPrivateKeys.find(k => k.identifier === recipientIdB64);
         if (matchedKey) {
-          return { status: 'OK', keyName: matchedKey.name };
+            return { status: 'OK', keyName: matchedKey.name };
         }
 
-        if (offset + 4 > buffer.byteLength) break;
-        const ephLen = readInt32LE(view, offset);
+        // 一致しない場合は、次のエントリーを読むために ephLen, wrapLen 分をスキップ
+        if (offset + 4 > uint8.length) break;
+        const ephLen = readUint32LE(view, offset);
         offset += 4 + ephLen;
-
-        if (offset + 4 > buffer.byteLength) break;
-        const wrapLen = readInt32LE(view, offset);
+        if (offset + 4 > uint8.length) break;
+        const wrapLen = readUint32LE(view, offset);
         offset += 4 + wrapLen;
       } else {
-        return { status: 'UNKNOWN', message: t('status_unknown_type') };
+        break;
       }
     }
-    
     return { status: 'NO_KEY' };
-    
   } catch (e) {
     console.error(e);
     return { status: 'UNKNOWN', message: t('status_parse_err') };
@@ -775,9 +790,9 @@ async function encryptFile(file) {
         const recipientIdBytes = base64ToUint8Array(pub.identifier);
         const wrappingAAD = concatUint8Arrays([
           new Uint8Array([ENTRY_TYPE_P521]),
-          writeInt32LE(recipientIdBytes.length),
+          writeUint32LE(recipientIdBytes.length),
           recipientIdBytes,
-          writeInt32LE(ephemeralPubRaw.length),
+          writeUint32LE(ephemeralPubRaw.length),
           ephemeralPubRaw,
           wrappingIV,
           fileNonce
@@ -789,7 +804,7 @@ async function encryptFile(file) {
         const sharedSecret = await deriveSharedSecretBits(EC_ALGORITHM, ephemeralKeyPair.privateKey, pub.cryptoKey);
         const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt", "decrypt"]);
         const wrappingCiphertextBuffer = await crypto.subtle.encrypt(
-          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
+          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD),tagLength: 128 },
           wrappingKey,
           aesKeyRaw
         );
@@ -818,9 +833,9 @@ async function encryptFile(file) {
             const recipientIdBytes = base64ToUint8Array(pub.identifier);
             const wrappingAAD = concatUint8Arrays([
               new Uint8Array([ENTRY_TYPE_X25519]),
-              writeInt32LE(recipientIdBytes.length),
+              writeUint32LE(recipientIdBytes.length),
               recipientIdBytes,
-              writeInt32LE(ephemeralPubRaw.length),
+              writeUint32LE(ephemeralPubRaw.length),
               ephemeralPubRaw,
               wrappingIV,
               fileNonce
@@ -833,7 +848,7 @@ async function encryptFile(file) {
             const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt", "decrypt"]);
 
             const wrappingCiphertextBuffer = await crypto.subtle.encrypt(
-              { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
+              { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD), tagLength: 128 },
               wrappingKey,
               aesKeyRaw
             );
@@ -859,20 +874,20 @@ async function encryptFile(file) {
   
   const fileBuffer = new Uint8Array(await file.arrayBuffer());
   const fileNameBytes = encoder.encode(file.name);
-  const payloadPlain = concatUint8Arrays([writeInt32LE(fileNameBytes.length), fileNameBytes, fileBuffer]);
+  const payloadPlain = concatUint8Arrays([writeUint32LE(fileNameBytes.length), fileNameBytes, fileBuffer]);
   // v2: payload はヘッダ全体をAADにする（改ざん・取り違え検知）
   // まずヘッダ（entries + marker + fileNonce + iv）を組み立ててから暗号化する
   
   let parts = [];
-  parts.push(writeInt32LE(entries.length));
+  parts.push(writeUint32LE(entries.length));
   for (let entry of entries) {
     parts.push(new Uint8Array([entry.type]));
     if (entry.type === ENTRY_TYPE_P521 || entry.type === ENTRY_TYPE_X25519) {
-      parts.push(writeInt32LE(entry.recipientId.length));
+      parts.push(writeUint32LE(entry.recipientId.length));
       parts.push(entry.recipientId);
-      parts.push(writeInt32LE(entry.ephemeralPub.length));
+      parts.push(writeUint32LE(entry.ephemeralPub.length));
       parts.push(entry.ephemeralPub);
-      parts.push(writeInt32LE(entry.wrappingOutput.length));
+      parts.push(writeUint32LE(entry.wrappingOutput.length));
       parts.push(entry.wrappingOutput);
     }
   }
@@ -890,7 +905,7 @@ async function encryptFile(file) {
   void payloadInfo; // lint回避（将来用）
 
   const payloadEnc = new Uint8Array(await crypto.subtle.encrypt(
-    { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes) },
+    { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes), tagLength: 128 },
     aesKey,
     payloadPlain
   ));
@@ -916,28 +931,42 @@ async function decryptFile(file) {
     if (fileBuffer.length < 4) {
       throw new Error("Invalid file.");
     }
-    const entryCount = readInt32LE(view, offset);
+    const entryCount = readUint32LE(view, offset);
     offset += 4;
     const headerEntries = [];
     const decoder = new TextDecoder();
     for (let i = 0; i < entryCount; i++) {
-      const type = fileBuffer[offset];
-      offset += 1;
-      
+    // 1. type (1byte) のチェック
+      if (offset + 1 > fileBuffer.length) throw new Error("File truncated (type)");
+      const type = fileBuffer[offset++];
+
       if (type === ENTRY_TYPE_P521 || type === ENTRY_TYPE_X25519) {
-        const idLen = readInt32LE(view, offset);
+        // 2. idLen (4byte) のチェック
+        if (offset + 4 > fileBuffer.length) throw new Error("File truncated (idLen)");
+        const idLen = readUint32LE(view, offset);
         offset += 4;
+    
+        // 3. recipientId (idLen byte) のチェック
+        if (offset + idLen > fileBuffer.length) throw new Error("File truncated (recipientId)");
         const recipientId = fileBuffer.slice(offset, offset + idLen);
         offset += idLen;
-        const ephLen = readInt32LE(view, offset);
+
+        // 同様に ephLen, wrapLen もチェックを追加してください
+        if (offset + 4 > fileBuffer.length) throw new Error("File truncated (ephLen)");
+        const ephLen = readUint32LE(view, offset);
         offset += 4;
+        if (offset + ephLen > fileBuffer.length) throw new Error("File truncated (eph)");
         const ephemeralPub = fileBuffer.slice(offset, offset + ephLen);
         offset += ephLen;
-        const wrapLen = readInt32LE(view, offset);
+
+        if (offset + 4 > fileBuffer.length) throw new Error("File truncated (wrapLen)");
+        const wrapLen = readUint32LE(view, offset);
         offset += 4;
+        if (offset + wrapLen > fileBuffer.length) throw new Error("File truncated (wrap)");
         const wrappingOutput = fileBuffer.slice(offset, offset + wrapLen);
         offset += wrapLen;
-        headerEntries.push({ type: type, recipientId: recipientId, ephemeralPub: ephemeralPub, wrappingOutput: wrappingOutput });
+
+        headerEntries.push({ type, recipientId, ephemeralPub, wrappingOutput });
       } else {
         throw new Error("Unknown key entry type.");
       }
@@ -988,9 +1017,9 @@ async function decryptFile(file) {
                 const recipientIdBytes = entry.recipientId;
                 const wrappingAAD = concatUint8Arrays([
                   new Uint8Array([ENTRY_TYPE_P521]),
-                  writeInt32LE(recipientIdBytes.length),
+                  writeUint32LE(recipientIdBytes.length),
                   recipientIdBytes,
-                  writeInt32LE(entry.ephemeralPub.length),
+                  writeUint32LE(entry.ephemeralPub.length),
                   entry.ephemeralPub,
                   new Uint8Array(wrappingIV),
                   new Uint8Array(fileNonce)
@@ -1002,7 +1031,7 @@ async function decryptFile(file) {
                 const sharedSecret = await deriveSharedSecretBits(EC_ALGORITHM, priv.cryptoKey, ephemeralPubKey);
                 const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, new Uint8Array(fileNonce), wrappingInfo, ["decrypt"]);
                 decrypted = await crypto.subtle.decrypt(
-                  { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
+                  { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD), tagLength: 128 },
                   wrappingKey,
                   wrappingCiphertext
                 );
@@ -1044,9 +1073,9 @@ async function decryptFile(file) {
                         const recipientIdBytes = entry.recipientId;
                         const wrappingAAD = concatUint8Arrays([
                           new Uint8Array([ENTRY_TYPE_X25519]),
-                          writeInt32LE(recipientIdBytes.length),
+                          writeUint32LE(recipientIdBytes.length),
                           recipientIdBytes,
-                          writeInt32LE(entry.ephemeralPub.length),
+                          writeUint32LE(entry.ephemeralPub.length),
                           entry.ephemeralPub,
                           new Uint8Array(wrappingIV),
                           new Uint8Array(fileNonce)
@@ -1058,7 +1087,7 @@ async function decryptFile(file) {
                         const sharedSecret = await deriveSharedSecretBits(X25519_ALGORITHM, priv.cryptoKey, ephemeralPubKey);
                         const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, new Uint8Array(fileNonce), wrappingInfo, ["decrypt"]);
                         decrypted = await crypto.subtle.decrypt(
-                          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD) },
+                          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD), tagLength: 128 },
                           wrappingKey,
                           wrappingCiphertext
                         );
@@ -1094,7 +1123,7 @@ async function decryptFile(file) {
     try {
       if (isV2) {
         payloadPlainBuffer = await crypto.subtle.decrypt(
-          { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes) },
+          { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes), tagLength: 128 },
           aesKey,
           payloadEnc
         );
@@ -1109,7 +1138,7 @@ async function decryptFile(file) {
     if (payloadPlain.length < 4) {
       throw new Error("Decryption result is invalid.");
     }
-    const fnameLen = dv.getInt32(0, true);
+    const fnameLen = dv.getUint32(0, true);
     if (4 + fnameLen > payloadPlain.length) {
       throw new Error("Decryption result is invalid.");
     }
@@ -1263,6 +1292,10 @@ async function generateKeyPair(name, algType) {
   } 
   // ■ 分岐 2: 新規 X25519
   else if (algType === X25519_ALGORITHM) {
+      if (!isX25519Supported) {
+          alert(t('alert_unsupported_alg') + " (X25519)"); // 非対応の場合の通知
+          return;
+        }
       try {
         const keyPair = await crypto.subtle.generateKey(
             { name: X25519_ALGORITHM },
@@ -1684,7 +1717,7 @@ async function tryLoadPubkeyFromHash() {
     try {
       let hash = location.hash.slice(1);
       // URLSearchParamsでパース（&が含まれる場合を考慮）
-      let params = new URLSearchParams(hash.replace(/&/g, '&'));
+      const params = new URLSearchParams(location.hash.slice(1));
       let b64url = params.get('pubkey');
       let expectedFp = params.get('fp');
 
@@ -1912,6 +1945,17 @@ window.addEventListener("load", async () => {
   }
   updateUIText(); 
 
+  await checkX25519Support(); // 起動時に検出を実行
+  
+  // UI制御: 非対応ブラウザでは X25519 選択肢を無効化または注釈を入れる
+  const algSelect = document.getElementById("keyAlgorithmSelect");
+  if (algSelect && !isX25519Supported) {
+    const xOption = Array.from(algSelect.options).find(o => o.value === X25519_ALGORITHM);
+    if (xOption) {
+      xOption.disabled = true;
+      xOption.textContent += " (Unsupported in this browser)";
+    }
+  }
   await initDB();
   await tryLoadPubkeyFromHash();
   await checkMagicLinkRequest();
