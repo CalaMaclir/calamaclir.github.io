@@ -100,8 +100,8 @@ function changeLanguage(lang) {
 // ── Fingerprint生成関数 ──
 async function calcFingerprint(publicKey) {
   const raw = await crypto.subtle.exportKey("raw", publicKey);
-  const hash = await crypto.subtle.digest("SHA-256", raw);
-  let b64 = btoa(String.fromCharCode(...new Uint8Array(hash)))
+ const hash = await crypto.subtle.digest("SHA-512", raw); // SHA-512に変更
+ let b64 = btoa(String.fromCharCode(...new Uint8Array(hash)))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return b64;
 }
@@ -249,6 +249,12 @@ async function sha256Bytes(u8) {
   return new Uint8Array(buf);
 }
 
+// 修正: SHA-256からSHA-512へ
+async function sha512Bytes(u8) {
+  const buf = await crypto.subtle.digest("SHA-512", (u8 instanceof Uint8Array) ? u8 : new Uint8Array(u8));
+  return new Uint8Array(buf);
+}
+
 // JWK import 時の互換化（key_ops衝突回避）
 function normalizeJwkForImport(jwk) {
   // structuredClone があればそれを優先でもOK
@@ -270,19 +276,13 @@ function eqBytes(a, b) {
   return true;
 }
 
+// 修正: HKDFのハッシュをSHA-512に統一
 async function deriveAesGcmKeyFromSharedSecret(sharedSecretU8, saltU8, infoU8, usages) {
-  // HKDF-Extract/Expand を WebCrypto で実施し、AES-256-GCM 鍵へ
-  const hkdfKey = await crypto.subtle.importKey(
-    "raw",
-    sharedSecretU8,
-    "HKDF",
-    false,
-    ["deriveKey"]
-  );
+  const hkdfKey = await crypto.subtle.importKey("raw", sharedSecretU8, "HKDF", false, ["deriveKey"]);
   return await crypto.subtle.deriveKey(
     {
       name: "HKDF",
-      hash: "SHA-256",
+      hash: "SHA-512", // ここをSHA-512に変更
       salt: saltU8,
       info: infoU8,
     },
@@ -750,411 +750,148 @@ document.getElementById('privKeyInput').addEventListener('change', async (e) => 
   resetUI();
 });
 
-// ── ファイル暗号化処理 ──
 async function encryptFile(file) {
   const aesKey = await crypto.subtle.generateKey(
     { name: AES_ALGORITHM, length: AES_KEY_LENGTH },
     true, ["encrypt", "decrypt"]
   );
   const aesKeyRaw = new Uint8Array(await crypto.subtle.exportKey("raw", aesKey));
-  // v2: ファイル単位の salt（HKDF）
   const fileNonce = window.crypto.getRandomValues(new Uint8Array(FILE_NONCE_LENGTH));
   const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
 
-  if (encryptionPublicKeys.length === 0) {
-    throw new Error("No public key imported for encryption.");
-  }
-  const uniquePublicKeys = [];
-  const seen = new Set();
-  for (let pub of encryptionPublicKeys) {
-    if (seen.has(pub.identifier)) {
-      continue;
-    }
-    seen.add(pub.identifier);
-    uniquePublicKeys.push(pub);
-  }
   const entries = [];
-  const encoder = new TextEncoder();
-  
+  const uniquePublicKeys = Array.from(new Set(encryptionPublicKeys.map(p => p.identifier)))
+    .map(id => encryptionPublicKeys.find(p => p.identifier === id));
+
   for (let pub of uniquePublicKeys) {
-    // ■ 分岐 1: 既存の EC (P-521)
-    if (pub.type === "EC") {
-      try {
-        const ephemeralKeyPair = await crypto.subtle.generateKey(
-          { name: EC_ALGORITHM, namedCurve: pub.curve },
-          true, ["deriveBits"]
-        );
-        // v2: 共有秘密→HKDF→AES-GCM鍵（ヘッダ情報にバインド）
-        const wrappingIV = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
-        const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
-        const recipientIdBytes = base64ToUint8Array(pub.identifier);
-        const wrappingAAD = concatUint8Arrays([
-          new Uint8Array([ENTRY_TYPE_P521]),
-          writeUint32LE(recipientIdBytes.length),
-          recipientIdBytes,
-          writeUint32LE(ephemeralPubRaw.length),
-          ephemeralPubRaw,
-          wrappingIV,
-          fileNonce
-        ]);
-        const wrappingInfo = await sha256Bytes(concatUint8Arrays([
-          new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "P-521"),
-          wrappingAAD
-        ]));
-        const sharedSecret = await deriveSharedSecretBits(EC_ALGORITHM, ephemeralKeyPair.privateKey, pub.cryptoKey);
-        const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt", "decrypt"]);
-        const wrappingCiphertextBuffer = await crypto.subtle.encrypt(
-          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD),tagLength: 128 },
-          wrappingKey,
-          aesKeyRaw
-        );
-        const wrappingCiphertext = new Uint8Array(wrappingCiphertextBuffer);
-        const wrappingOutput = concatUint8Arrays([wrappingIV, wrappingCiphertext]);
-        
-        entries.push({
-          type: ENTRY_TYPE_P521, // Type 1
-          recipientId: recipientIdBytes,
-          ephemeralPub: ephemeralPubRaw,
-          wrappingOutput: wrappingOutput
-        });
-      } catch (err) {
-        console.error("EC Encrypt Fail: ", err);
-      }
-    } 
-    // ■ 分岐 2: 新規 X25519
-    else if (pub.type === X25519_ALGORITHM) {
-        try {
-            const ephemeralKeyPair = await crypto.subtle.generateKey(
-              { name: X25519_ALGORITHM },
-              true, ["deriveBits"]
-            );
-            const wrappingIV = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
-            const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
-            const recipientIdBytes = base64ToUint8Array(pub.identifier);
-            const wrappingAAD = concatUint8Arrays([
-              new Uint8Array([ENTRY_TYPE_X25519]),
-              writeUint32LE(recipientIdBytes.length),
-              recipientIdBytes,
-              writeUint32LE(ephemeralPubRaw.length),
-              ephemeralPubRaw,
-              wrappingIV,
-              fileNonce
-            ]);
-            const wrappingInfo = await sha256Bytes(concatUint8Arrays([
-              new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "X25519"),
-              wrappingAAD
-            ]));
-            const sharedSecret = await deriveSharedSecretBits(X25519_ALGORITHM, ephemeralKeyPair.privateKey, pub.cryptoKey);
-            const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt", "decrypt"]);
+    const algName = (pub.type === X25519_ALGORITHM) ? X25519_ALGORITHM : EC_ALGORITHM;
+    const entryType = (pub.type === X25519_ALGORITHM) ? ENTRY_TYPE_X25519 : ENTRY_TYPE_P521;
+    
+    const ephemeralKeyPair = await crypto.subtle.generateKey(
+      { name: algName, ...(pub.curve && { namedCurve: pub.curve }) },
+      true, ["deriveBits"]
+    );
+    const wrappingIV = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
+    const ephemeralPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeralKeyPair.publicKey));
+    const recipientIdBytes = base64ToUint8Array(pub.identifier);
 
-            const wrappingCiphertextBuffer = await crypto.subtle.encrypt(
-              { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD), tagLength: 128 },
-              wrappingKey,
-              aesKeyRaw
-            );
-            const wrappingCiphertext = new Uint8Array(wrappingCiphertextBuffer);
-            const wrappingOutput = concatUint8Arrays([wrappingIV, wrappingCiphertext]);
+    // V2 AAD: SHA-512でバインド
+    const wrappingAAD = concatUint8Arrays([
+      new Uint8Array([entryType]),
+      writeUint32LE(recipientIdBytes.length), recipientIdBytes,
+      writeUint32LE(ephemeralPubRaw.length), ephemeralPubRaw,
+      wrappingIV, fileNonce
+    ]);
+    const wrappingInfo = await sha512Bytes(concatUint8Arrays([
+      new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + pub.type),
+      wrappingAAD
+    ]));
 
-            entries.push({
-              type: ENTRY_TYPE_X25519, // Type 2 (新規)
-              recipientId: recipientIdBytes,
-              ephemeralPub: ephemeralPubRaw,
-              wrappingOutput: wrappingOutput
-            });
+    const sharedSecret = await deriveSharedSecretBits(algName, ephemeralKeyPair.privateKey, pub.cryptoKey);
+    const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, fileNonce, wrappingInfo, ["encrypt"]);
 
-        } catch(err) {
-            console.error("X25519 Encrypt Fail: ", err);
-        }
-    }
+    const wrappedKey = new Uint8Array(await crypto.subtle.encrypt(
+      { name: AES_ALGORITHM, iv: wrappingIV, additionalData: wrappingAAD, tagLength: 128 },
+      wrappingKey, aesKeyRaw
+    ));
+
+    entries.push({
+      type: entryType, recipientId: recipientIdBytes,
+      ephemeralPub: ephemeralPubRaw, wrappingOutput: concatUint8Arrays([wrappingIV, wrappedKey])
+    });
   }
-  
-  if (entries.length === 0) {
-    throw new Error("No valid public key available.");
-  }
-  
-  const fileBuffer = new Uint8Array(await file.arrayBuffer());
+
+  // ペイロード構築
+  const encoder = new TextEncoder();
   const fileNameBytes = encoder.encode(file.name);
+  const fileBuffer = new Uint8Array(await file.arrayBuffer());
   const payloadPlain = concatUint8Arrays([writeUint32LE(fileNameBytes.length), fileNameBytes, fileBuffer]);
-  // v2: payload はヘッダ全体をAADにする（改ざん・取り違え検知）
-  // まずヘッダ（entries + marker + fileNonce + iv）を組み立ててから暗号化する
-  
-  let parts = [];
-  parts.push(writeUint32LE(entries.length));
-  for (let entry of entries) {
-    parts.push(new Uint8Array([entry.type]));
-    if (entry.type === ENTRY_TYPE_P521 || entry.type === ENTRY_TYPE_X25519) {
-      parts.push(writeUint32LE(entry.recipientId.length));
-      parts.push(entry.recipientId);
-      parts.push(writeUint32LE(entry.ephemeralPub.length));
-      parts.push(entry.ephemeralPub);
-      parts.push(writeUint32LE(entry.wrappingOutput.length));
-      parts.push(entry.wrappingOutput);
-    }
-  }
-  // v2 拡張: marker + fileNonce を iv の前に入れる
-  parts.push(FILE_V2_MARKER);
-  parts.push(fileNonce);
-  parts.push(iv);
 
-  const headerBytes = concatUint8Arrays(parts); // payloadEnc 以外の全ヘッダ
-  const payloadInfo = await sha256Bytes(concatUint8Arrays([
-    new TextEncoder().encode(HKDF_INFO_PAYLOAD_PREFIX),
-    headerBytes
-  ]));
-  // payload鍵は既存のランダムAES鍵のまま。infoは将来の「鍵派生方式差し替え」用に予約（今はAADのみ効かせる）
-  void payloadInfo; // lint回避（将来用）
+  let parts = [writeUint32LE(entries.length)];
+  for (let e of entries) {
+    parts.push(new Uint8Array([e.type]), writeUint32LE(e.recipientId.length), e.recipientId,
+               writeUint32LE(e.ephemeralPub.length), e.ephemeralPub,
+               writeUint32LE(e.wrappingOutput.length), e.wrappingOutput);
+  }
+  parts.push(FILE_V2_MARKER, fileNonce, iv);
+  const headerBytes = concatUint8Arrays(parts);
 
   const payloadEnc = new Uint8Array(await crypto.subtle.encrypt(
-    { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes), tagLength: 128 },
-    aesKey,
-    payloadPlain
+    { name: AES_ALGORITHM, iv: iv, additionalData: headerBytes, tagLength: 128 },
+    aesKey, payloadPlain
   ));
 
   parts.push(payloadEnc);
-  const finalData = concatUint8Arrays(parts);
-  const blob = new Blob([finalData], { type: "application/octet-stream" });
+  const blob = new Blob([concatUint8Arrays(parts)], { type: "application/octet-stream" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = file.name + ".crypted";
   a.click();
 }
 
-// ── ファイル復号処理 ──
 async function decryptFile(file) {
-  try {
-    if (importedPrivateKeys.length === 0) {
-      throw new Error("No private key available for decryption.");
-    }
-    const fileBuffer = new Uint8Array(await file.arrayBuffer());
-    const view = new DataView(fileBuffer.buffer);
-    let offset = 0;
-    if (fileBuffer.length < 4) {
-      throw new Error("Invalid file.");
-    }
-    const entryCount = readUint32LE(view, offset);
-    offset += 4;
-    const headerEntries = [];
-    const decoder = new TextDecoder();
-    for (let i = 0; i < entryCount; i++) {
-    // 1. type (1byte) のチェック
-      if (offset + 1 > fileBuffer.length) throw new Error("File truncated (type)");
-      const type = fileBuffer[offset++];
-
-      if (type === ENTRY_TYPE_P521 || type === ENTRY_TYPE_X25519) {
-        // 2. idLen (4byte) のチェック
-        if (offset + 4 > fileBuffer.length) throw new Error("File truncated (idLen)");
-        const idLen = readUint32LE(view, offset);
-        offset += 4;
-    
-        // 3. recipientId (idLen byte) のチェック
-        if (offset + idLen > fileBuffer.length) throw new Error("File truncated (recipientId)");
-        const recipientId = fileBuffer.slice(offset, offset + idLen);
-        offset += idLen;
-
-        // 同様に ephLen, wrapLen もチェックを追加してください
-        if (offset + 4 > fileBuffer.length) throw new Error("File truncated (ephLen)");
-        const ephLen = readUint32LE(view, offset);
-        offset += 4;
-        if (offset + ephLen > fileBuffer.length) throw new Error("File truncated (eph)");
-        const ephemeralPub = fileBuffer.slice(offset, offset + ephLen);
-        offset += ephLen;
-
-        if (offset + 4 > fileBuffer.length) throw new Error("File truncated (wrapLen)");
-        const wrapLen = readUint32LE(view, offset);
-        offset += 4;
-        if (offset + wrapLen > fileBuffer.length) throw new Error("File truncated (wrap)");
-        const wrappingOutput = fileBuffer.slice(offset, offset + wrapLen);
-        offset += wrapLen;
-
-        headerEntries.push({ type, recipientId, ephemeralPub, wrappingOutput });
-      } else {
-        throw new Error("Unknown key entry type.");
-      }
-    }
-    // v2判定: entries の直後に marker がある場合は v2
-    let isV2 = false;
-    let fileNonce = null;
-    if (offset + FILE_V2_MARKER.length <= fileBuffer.length) {
-      const marker = fileBuffer.slice(offset, offset + FILE_V2_MARKER.length);
-      if (eqBytes(marker, FILE_V2_MARKER)) {
-        isV2 = true;
-        offset += FILE_V2_MARKER.length;
-        if (offset + FILE_NONCE_LENGTH + AES_IV_LENGTH > fileBuffer.length) {
-          throw new Error("Invalid file.");
-        }
-        fileNonce = fileBuffer.slice(offset, offset + FILE_NONCE_LENGTH);
-        offset += FILE_NONCE_LENGTH;
-      }
-    }
-    if (offset + AES_IV_LENGTH > fileBuffer.length) {
-      throw new Error("Invalid file.");
-    }
-    const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH);
-    offset += AES_IV_LENGTH;
-    const headerBytes = isV2 ? fileBuffer.slice(0, offset) : null;
-    const payloadEnc = fileBuffer.slice(offset);
-    let aesKeyRaw;
-    let found = false;
-    
-    for (let entry of headerEntries) {
-      const entryIdBase64 = arrayBufferToBase64(entry.recipientId);
-      
-      // ■ 分岐 1: Type 1 (EC P-521)
-      if (entry.type === ENTRY_TYPE_P521) {
-        for (let priv of importedPrivateKeys.filter(k => k.type === "EC")) {
-          if (priv.identifier === entryIdBase64) {
-            const ephemeralPubKey = await crypto.subtle.importKey(
-              "raw", entry.ephemeralPub,
-              { name: EC_ALGORITHM, namedCurve: keyStore[priv.name].curve },
-              true, []
-            );
-            const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
-            const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
-            try {
-              let decrypted;
-              if (isV2) {
-                // v2: sharedSecret→HKDF で wrappingKey を作り、AAD を付与
-                const recipientIdBytes = entry.recipientId;
-                const wrappingAAD = concatUint8Arrays([
-                  new Uint8Array([ENTRY_TYPE_P521]),
-                  writeUint32LE(recipientIdBytes.length),
-                  recipientIdBytes,
-                  writeUint32LE(entry.ephemeralPub.length),
-                  entry.ephemeralPub,
-                  new Uint8Array(wrappingIV),
-                  new Uint8Array(fileNonce)
-                ]);
-                const wrappingInfo = await sha256Bytes(concatUint8Arrays([
-                  new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "P-521"),
-                  wrappingAAD
-                ]));
-                const sharedSecret = await deriveSharedSecretBits(EC_ALGORITHM, priv.cryptoKey, ephemeralPubKey);
-                const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, new Uint8Array(fileNonce), wrappingInfo, ["decrypt"]);
-                decrypted = await crypto.subtle.decrypt(
-                  { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD), tagLength: 128 },
-                  wrappingKey,
-                  wrappingCiphertext
-                );
-              } else {
-                // 旧: deriveKey + AADなし
-                const wrappingKey = await crypto.subtle.deriveKey(
-                  { name: EC_ALGORITHM, public: ephemeralPubKey },
-                  priv.cryptoKey,
-                  { name: AES_ALGORITHM, length: 256 },
-                  false, ["decrypt"]
-                );
-                decrypted = await crypto.subtle.decrypt(
-                  { name: AES_ALGORITHM, iv: wrappingIV },
-                  wrappingKey,
-                  wrappingCiphertext
-                );
-              }
-              aesKeyRaw = new Uint8Array(decrypted);
-              found = true;
-              break;
-            } catch (err) { }
-          }
-        }
-      } 
-      // ■ 分岐 2: Type 2 (X25519)
-      else if (entry.type === ENTRY_TYPE_X25519) {
-          for (let priv of importedPrivateKeys.filter(k => k.type === X25519_ALGORITHM)) {
-              if (priv.identifier === entryIdBase64) {
-                  const ephemeralPubKey = await crypto.subtle.importKey(
-                      "raw", entry.ephemeralPub,
-                      { name: X25519_ALGORITHM },
-                      true, []
-                  );
-                  const wrappingIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
-                  const wrappingCiphertext = entry.wrappingOutput.slice(AES_IV_LENGTH);
-                  try {
-                      let decrypted;
-                      if (isV2) {
-                        const recipientIdBytes = entry.recipientId;
-                        const wrappingAAD = concatUint8Arrays([
-                          new Uint8Array([ENTRY_TYPE_X25519]),
-                          writeUint32LE(recipientIdBytes.length),
-                          recipientIdBytes,
-                          writeUint32LE(entry.ephemeralPub.length),
-                          entry.ephemeralPub,
-                          new Uint8Array(wrappingIV),
-                          new Uint8Array(fileNonce)
-                        ]);
-                        const wrappingInfo = await sha256Bytes(concatUint8Arrays([
-                          new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + "X25519"),
-                          wrappingAAD
-                        ]));
-                        const sharedSecret = await deriveSharedSecretBits(X25519_ALGORITHM, priv.cryptoKey, ephemeralPubKey);
-                        const wrappingKey = await deriveAesGcmKeyFromSharedSecret(sharedSecret, new Uint8Array(fileNonce), wrappingInfo, ["decrypt"]);
-                        decrypted = await crypto.subtle.decrypt(
-                          { name: AES_ALGORITHM, iv: new Uint8Array(wrappingIV), additionalData: new Uint8Array(wrappingAAD), tagLength: 128 },
-                          wrappingKey,
-                          wrappingCiphertext
-                        );
-                      } else {
-                        const wrappingKey = await crypto.subtle.deriveKey(
-                          { name: X25519_ALGORITHM, public: ephemeralPubKey },
-                          priv.cryptoKey,
-                          { name: AES_ALGORITHM, length: 256 },
-                          false, ["decrypt"]
-                        );
-                        decrypted = await crypto.subtle.decrypt(
-                          { name: AES_ALGORITHM, iv: wrappingIV },
-                          wrappingKey,
-                          wrappingCiphertext
-                        );
-                      }
-                      aesKeyRaw = new Uint8Array(decrypted);
-                      found = true;
-                      break;
-                  } catch (err) { }
-              }
-          }
-      }
-      
-      if (found) break;
-    }
-    
-    if (!found || !aesKeyRaw) {
-      throw new Error("Matching private key not found or AES decryption failed.");
-    }
-    const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, true, ["decrypt"]);
-    let payloadPlainBuffer;
-    try {
-      if (isV2) {
-        payloadPlainBuffer = await crypto.subtle.decrypt(
-          { name: AES_ALGORITHM, iv: new Uint8Array(iv), additionalData: new Uint8Array(headerBytes), tagLength: 128 },
-          aesKey,
-          payloadEnc
-        );
-      } else {
-        payloadPlainBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv }, aesKey, payloadEnc);
-      }
-    } catch (err) {
-      throw new Error("AES decryption failed: " + err.message);
-    }
-    const payloadPlain = new Uint8Array(payloadPlainBuffer);
-    const dv = new DataView(payloadPlain.buffer);
-    if (payloadPlain.length < 4) {
-      throw new Error("Decryption result is invalid.");
-    }
-    const fnameLen = dv.getUint32(0, true);
-    if (4 + fnameLen > payloadPlain.length) {
-      throw new Error("Decryption result is invalid.");
-    }
-    const fnameBytes = payloadPlain.slice(4, 4 + fnameLen);
-    const originalFileName = decoder.decode(fnameBytes);
-    const fileContent = payloadPlain.slice(4 + fnameLen);
-    const blob = new Blob([fileContent], { type: "application/octet-stream" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = originalFileName;
-    a.click();
-  } catch (err) {
-    throw err;
+  const fileBuffer = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(fileBuffer.buffer);
+  let offset = 0;
+  
+  const entryCount = readUint32LE(view, offset); offset += 4;
+  const headerEntries = [];
+  for (let i = 0; i < entryCount; i++) {
+    const type = fileBuffer[offset++];
+    const idLen = readUint32LE(view, offset); offset += 4;
+    const recipientId = fileBuffer.slice(offset, offset + idLen); offset += idLen;
+    const ephLen = readUint32LE(view, offset); offset += 4;
+    const ephemeralPub = fileBuffer.slice(offset, offset + ephLen); offset += ephLen;
+    const wrapLen = readUint32LE(view, offset); offset += 4;
+    const wrappingOutput = fileBuffer.slice(offset, offset + wrapLen); offset += wrapLen;
+    headerEntries.push({ type, recipientId, ephemeralPub, wrappingOutput });
   }
-}
 
+  // V2マーカー必須チェック
+  const marker = fileBuffer.slice(offset, offset + FILE_V2_MARKER.length);
+  if (!eqBytes(marker, FILE_V2_MARKER)) throw new Error("Unsupported or old file format (V2 required).");
+  offset += FILE_V2_MARKER.length;
+
+  const fileNonce = fileBuffer.slice(offset, offset + FILE_NONCE_LENGTH); offset += FILE_NONCE_LENGTH;
+  const iv = fileBuffer.slice(offset, offset + AES_IV_LENGTH); offset += AES_IV_LENGTH;
+  const headerBytes = fileBuffer.slice(0, offset);
+  const payloadEnc = fileBuffer.slice(offset);
+
+  let aesKeyRaw, found = false;
+  for (let entry of headerEntries) {
+    const priv = importedPrivateKeys.find(k => k.identifier === arrayBufferToBase64(entry.recipientId));
+    if (!priv) continue;
+
+    const algName = (entry.type === ENTRY_TYPE_X25519) ? X25519_ALGORITHM : EC_ALGORITHM;
+    const ephKey = await crypto.subtle.importKey("raw", entry.ephemeralPub, 
+      { name: algName, ...(algName === EC_ALGORITHM && { namedCurve: keyStore[priv.name].curve }) }, true, []);
+
+    const wIV = entry.wrappingOutput.slice(0, AES_IV_LENGTH);
+    const wCT = entry.wrappingOutput.slice(AES_IV_LENGTH);
+    const wAAD = concatUint8Arrays([new Uint8Array([entry.type]), writeUint32LE(entry.recipientId.length), entry.recipientId, writeUint32LE(entry.ephemeralPub.length), entry.ephemeralPub, wIV, fileNonce]);
+    
+    const wInfo = await sha512Bytes(concatUint8Arrays([new TextEncoder().encode(HKDF_INFO_WRAP_PREFIX + priv.type), wAAD]));
+    const ss = await deriveSharedSecretBits(algName, priv.cryptoKey, ephKey);
+    const wKey = await deriveAesGcmKeyFromSharedSecret(ss, fileNonce, wInfo, ["decrypt"]);
+
+    try {
+      aesKeyRaw = new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: wIV, additionalData: wAAD, tagLength: 128 }, wKey, wCT));
+      found = true; break;
+    } catch (e) { continue; }
+  }
+
+  if (!found) throw new Error("Matching private key not found or decryption failed.");
+
+  const aesKey = await crypto.subtle.importKey("raw", aesKeyRaw, { name: AES_ALGORITHM }, false, ["decrypt"]);
+  const plain = new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv: iv, additionalData: headerBytes, tagLength: 128 }, aesKey, payloadEnc));
+  
+  const fnameLen = new DataView(plain.buffer).getUint32(0, true);
+  const fileName = new TextDecoder().decode(plain.slice(4, 4 + fnameLen));
+  const blob = new Blob([plain.slice(4 + fnameLen)], { type: "application/octet-stream" });
+  
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = fileName; a.click();
+}
 // ── ボタン押下処理 ──
 document.getElementById('encryptBtn').addEventListener('click', async () => {
   if (filesToProcess.length === 0) {
