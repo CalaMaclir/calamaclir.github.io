@@ -107,12 +107,14 @@ async function calcFingerprint(publicKey) {
 }
 
 // 既存のFPから4桁の数字を派生させる
+// 既存のFPから4桁の数字を派生させる
 async function calcConfirmationKey(fingerprint) {
   if (!fingerprint) return "----";
   const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(fingerprint));
+  // SHA-256 から SHA-512 へ変更
+  const hashBuffer = await crypto.subtle.digest("SHA-512", encoder.encode(fingerprint));
   const hashArray = new Uint8Array(hashBuffer);
-  // 先頭4バイトから数値を生成
+  // 先頭4バイトから数値を生成（SHA-512でも同様に動作）
   const view = new DataView(hashArray.buffer);
   const val = view.getUint32(0); 
   return (val % 10000).toString().padStart(4, '0');
@@ -244,11 +246,6 @@ function base64ToUint8Array(b64) {
 }
 
 // ── クリプト補助（v2） ──
-async function sha256Bytes(u8) {
-  const buf = await crypto.subtle.digest("SHA-256", (u8 instanceof Uint8Array) ? u8 : new Uint8Array(u8));
-  return new Uint8Array(buf);
-}
-
 // 修正: SHA-256からSHA-512へ
 async function sha512Bytes(u8) {
   const buf = await crypto.subtle.digest("SHA-512", (u8 instanceof Uint8Array) ? u8 : new Uint8Array(u8));
