@@ -107,7 +107,6 @@ async function calcFingerprint(publicKey) {
 }
 
 // 既存のFPから4桁の数字を派生させる
-// 既存のFPから4桁の数字を派生させる
 async function calcConfirmationKey(fingerprint) {
   if (!fingerprint) return "----";
   const encoder = new TextEncoder();
@@ -118,6 +117,17 @@ async function calcConfirmationKey(fingerprint) {
   const view = new DataView(hashArray.buffer);
   const val = view.getUint32(0); 
   return (val % 10000).toString().padStart(4, '0');
+}
+
+// ── メールアドレスのハッシュ化（追加） ──
+async function hashEmail(email) {
+    const normalized = email.trim().toLowerCase();
+    const encoder = new TextEncoder();
+    // SHA-256でハッシュ化
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(normalized));
+    const hashArray = new Uint8Array(hashBuffer);
+    let b64 = btoa(String.fromCharCode(...hashArray));
+    return base64ToBase64Url(b64); // URLセーフなBase64にして返す
 }
 
 // ── UI補助関数 ──
@@ -1453,9 +1463,29 @@ async function tryLoadPubkeyFromHash() {
       // URLSearchParamsでパース（&が含まれる場合を考慮）
       const params = new URLSearchParams(location.hash.slice(1));
       let b64url = params.get('pubkey');
-      let expectedFp = params.get('fp');
+        let expectedFp = params.get('fp');
+        let expectedSenderHash = params.get(MAGIC_SENDER_PARAM);
 
-      if (!b64url) throw "Public key data not found";
+        if (!b64url) throw "Public key data not found";
+        if (expectedSenderHash) {
+            let senderEmail = prompt(t('prompt_sender_email') || "送信者（相手）のメールアドレスを入力してください\n※不正な鍵の取り込みを防ぐための確認です:");
+
+            if (senderEmail === null) {
+                alert(t('alert_verify_cancel') || "検証がキャンセルされました。公開鍵のインポートを中止します。");
+                return; // 処理中断
+            }
+            if (!senderEmail.trim()) {
+                alert(t('alert_verify_fail') || "メールアドレスが入力されていません。公開鍵のインポートを中止します。");
+                return; // 処理中断
+            }
+
+            const inputHash = await hashEmail(senderEmail);
+            if (inputHash !== expectedSenderHash) {
+                alert(t('alert_verify_mismatch') || "入力されたメールアドレスが一致しません。\n悪意のある第三者によってURLがすり替えられた可能性があるため、インポートを中止します。");
+                return; // 処理中断
+            }
+        }
+
 
       // Base64Url形式からXML文字列へデコード
       const b64 = base64UrlToBase64(b64url);
@@ -1555,6 +1585,12 @@ async function checkMagicLinkRequest() {
   startBtn.textContent = t('wizard_btn_start');
 
   startBtn.onclick = async () => {
+    const emailInput = document.getElementById('wizardEmailInput');
+    const email = emailInput ? emailInput.value : "";
+    if (!email.trim()) {
+        alert(t('alert_wizard_email_req') || "メールアドレスを入力してください。");
+        return;
+    }
     startBtn.disabled = true;
     startBtn.textContent = t('processing');
 
@@ -1572,11 +1608,17 @@ async function checkMagicLinkRequest() {
       const b64 = btoa(String.fromCharCode(...utf8));
       const b64url = base64ToBase64Url(b64);
       const fingerprint = keyPair.fingerprint;
+      
 
       // --- [追加] 確認キーの派生 ---
       const confKey = await calcConfirmationKey(fingerprint);
 
-      const replyUrl = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
+
+      // ▽▽▽ ここから修正（ハッシュを生成し、URLに付与する） ▽▽▽
+      const emailHash = await hashEmail(email);
+      // 元のコード: const replyUrl = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}`;
+      const replyUrl = `${PUBKEY_SHARE_BASE_URL}#pubkey=${b64url}&fp=${fingerprint}&${MAGIC_SENDER_PARAM}=${emailHash}`;
+      // △△△ ここまで修正 △△△
 
       document.getElementById('wizardStep1').style.display = 'none';
       const resultArea = document.getElementById('wizardResult');

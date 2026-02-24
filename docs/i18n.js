@@ -117,7 +117,14 @@ const resources = {
     email_template_body: "暗号化したファイルを送ります。\n添付のファイルをダウンロードした後、以下のリンクを開いてファイルをドラッグ＆ドロップしてください。\n自動的にあなたの秘密鍵を使って復号されます。\n\n復号ツール: {url}",
     btn_copy_email: "メッセージをコピー",
     conf_key: "確認キー",
-    conf_key_short: "確認用"
+    conf_key_short: "確認用",
+    wizard_email_label: "あなたのメールアドレス（確認用）",
+    alert_wizard_email_req: "メールアドレスを入力してください。",
+    prompt_sender_email: "送信者（相手）のメールアドレスを入力してください\n※不正な鍵の取り込みを防ぐための確認です:",
+    alert_verify_cancel: "検証がキャンセルされました。公開鍵のインポートを中止します。",
+    alert_verify_fail: "メールアドレスが入力されていません。公開鍵のインポートを中止します。",
+    alert_verify_mismatch: "入力されたメールアドレスが一致しません。\n悪意のある第三者によってURLがすり替えられた可能性があるため、インポートを中止します。"
+
   },
   en: {
     app_desc: "File encryption/decryption Chrome extension using public key cryptography.<br>Manage keys and encrypt/decrypt files easily.<br>Keys are stored in IndexedDB within the browser, and all processing is done locally.",
@@ -236,7 +243,13 @@ const resources = {
     email_template_body: "I am sending you an encrypted file.\nPlease download the attached file, then open the link below and drop the file there.\nIt will be decrypted using your private key automatically.\n\nDecryption Tool: {url}",
     btn_copy_email: "Copy Message",
     conf_key: "Confirmation Key",
-    conf_key_short: "Verify"
+      conf_key_short: "Verify",
+      wizard_email_label: "Your Email Address (For Verification)",
+      alert_wizard_email_req: "Please enter your email address.",
+      prompt_sender_email: "Please enter the sender's email address\n*This is to prevent importing unauthorized keys:",
+      alert_verify_cancel: "Verification cancelled. Public key import aborted.",
+      alert_verify_fail: "No email address entered. Public key import aborted.",
+      alert_verify_mismatch: "The entered email address does not match.\nThe URL may have been tampered with by a malicious third party. Import aborted."
   },
   fr: {
     app_desc: "Extension Chrome de chiffrement et déchiffrement de fichiers utilisant la cryptographie à clé publique.<br>Gérez vos clés et chiffrez/déchiffrez des fichiers facilement.<br>Les clés sont stockées dans IndexedDB dans votre navigateur, et tout le traitement est effectué localement.",
@@ -355,7 +368,13 @@ const resources = {
     email_template_body: "Je vous envoie un fichier chiffré.\nTéléchargez le fichier joint, puis ouvrez le lien ci-dessous et déposez-y le fichier.\nIl sera déchiffré automatiquement avec votre clé privée.\n\nOutil de déchiffrement : {url}",
     btn_copy_email: "Copier le message",
     conf_key: "Clé de confirmation",
-    conf_key_short: "Vérifier"
+    conf_key_short: "Vérifier",
+    wizard_email_label: "Votre adresse e-mail (Pour vérification)",
+    alert_wizard_email_req: "Veuillez entrer votre adresse e-mail.",
+    prompt_sender_email: "Veuillez entrer l'adresse e-mail de l'expéditeur\n*Ceci afin d'éviter l'importation de clés non autorisées :",
+    alert_verify_cancel: "Vérification annulée. Importation de la clé publique abandonnée.",
+    alert_verify_fail: "Aucune adresse e-mail saisie. Importation de la clé publique abandonnée.",
+    alert_verify_mismatch: "L'adresse e-mail saisie ne correspond pas.\nL'URL a peut-être été altérée par un tiers malveillant. Importation abandonnée."
   },
   lb: {
     app_desc: "Chrome-Extensioun fir Verschlësselung an Entschlësselung vun Dateien mat ëffentleche Schlësselen.<br>Verwalten Är Schlësselen an verschlësselt/entschlësselt Dateien einfach.<br>D'Schlëssel ginn an der IndexedDB an Ärem Browser gespäichert, an all Veraarbechtung gëtt lokal gemaach.",
@@ -474,6 +493,12 @@ const resources = {
     email_template_body: "Ech schécken Iech eng verschlësselt Datei.\nLuet déi ugehaangen Datei erof, öffnet dann de Link hei ënnen a leet d'Datei do of.\nEt gëtt automatesch mat Ärem privaten Schlëssel entschlësselt.\n\nEntschlësselungsinstrument: {url}",
     btn_copy_email: "Message kopéieren",
     conf_key: "Bestätegungsschlëssel",
-    conf_key_short: "Iwwerpréiwen"
+    conf_key_short: "Iwwerpréiwen",
+    wizard_email_label: "Är E-Mail Adress (Fir d'Iwwerpréiwung)",
+    alert_wizard_email_req: "Gitt w.e.g. Är E-Mail Adress an.",
+    prompt_sender_email: "Gitt w.e.g. d'E-Mail Adress vum Sender an\n*Dëst ass fir ze verhënneren, datt onautoriséiert Schlësselen importéiert ginn:",
+    alert_verify_cancel: "Iwwerpréiwung ofgebrach. Den Import vum ëffentleche Schlëssel gouf ofgebrach.",
+    alert_verify_fail: "Keng E-Mail Adress aginn. Den Import vum ëffentleche Schlëssel gouf ofgebrach.",
+    alert_verify_mismatch: "Déi aginn E-Mail Adress stëmmt net iwwereneen.\nD'URL kéint vun enger béiswëlleger drëtter Partei manipuléiert gi sinn. Import ofgebrach."
   }
 };
