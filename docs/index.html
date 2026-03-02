@@ -1,408 +1,421 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>PubliCrypt</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-	:root {
-	  --main-bg: #f6f7fb;
-	  --accent: #5c6bc0;
-	  --accent-dark: #3949ab;
-	  --danger: #e53935;
-	  --danger-dark: #b71c1c;
-	  --border: #e0e7ef;
-	  --radius: 14px;
-	  --shadow: 0 4px 16px rgba(60,72,101,0.10);
-	}
+    <meta charset="UTF-8">
+    <title>PubliCrypt</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --main-bg: #f6f7fb;
+            --accent: #5c6bc0;
+            --accent-dark: #3949ab;
+            --danger: #e53935;
+            --danger-dark: #b71c1c;
+            --border: #e0e7ef;
+            --radius: 14px;
+            --shadow: 0 4px 16px rgba(60,72,101,0.10);
+        }
 
-	body {
-	  font-family: 'Segoe UI', 'Yu Gothic', Arial, sans-serif;
-	  background: var(--main-bg);
-	  margin: 0;
-	  padding: 0;
-	  color: #222;
-	}
+        body {
+            font-family: 'Segoe UI', 'Yu Gothic', Arial, sans-serif;
+            background: var(--main-bg);
+            margin: 0;
+            padding: 0;
+            color: #222;
+        }
 
-	h1, h2, h3 {
-	  font-weight: 600;
-	  margin: 0 0 10px 0;
-	}
+        h1, h2, h3 {
+            font-weight: 600;
+            margin: 0 0 10px 0;
+        }
 
-	a {
-	  color: var(--accent);
-	  text-decoration: underline;
-	  cursor: pointer;
-	}
+        a {
+            color: var(--accent);
+            text-decoration: underline;
+            cursor: pointer;
+        }
 
-	main {
-	  max-width: 700px;
-	  margin: 30px auto;
-	  padding: 24px;
-	  background: #fff;
-	  border-radius: var(--radius);
-	  box-shadow: var(--shadow);
-	  position: relative;
-	}
-    
-    /* 言語切り替えスイッチ */
-    .lang-switch {
-        position: absolute;
-        top: 24px;
-        right: 24px;
-        font-size: 0.9em;
-    }
-    .lang-switch span {
-        cursor: pointer;
-        color: #888;
-        font-weight: bold;
-        margin: 0 2px;
-    }
-    .lang-switch span:hover {
-        color: var(--accent);
-    }
-    .lang-switch span.active {
-        color: var(--accent);
-        text-decoration: underline;
-    }
+        main {
+            max-width: 700px;
+            margin: 30px auto;
+            padding: 24px;
+            background: #fff;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            position: relative;
+        }
 
-	section {
-	  margin-bottom: 32px;
-	}
+        /* 言語切り替えスイッチ */
+        .lang-switch {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            font-size: 0.9em;
+        }
 
-	.key-section,
-	.warning-section {
-	  background: #f8fafc;
-	  border-radius: var(--radius);
-	  padding: 18px 16px;
-	  border: 1.5px solid var(--border);
-	  box-shadow: 0 1px 6px rgba(60,72,101,0.03);
-	  margin-bottom: 18px;
-	}
+            .lang-switch span {
+                cursor: pointer;
+                color: #888;
+                font-weight: bold;
+                margin: 0 2px;
+            }
 
-	.key-section h2,
-	.key-section h3 {
-	  color: var(--accent);
-	  margin-bottom: 10px;
-	}
+                .lang-switch span:hover {
+                    color: var(--accent);
+                }
 
-	.warning-section {
-	  border: 2px solid var(--danger);
-	  background: #ffecec;
-	  color: var(--danger-dark);
-	}
+                .lang-switch span.active {
+                    color: var(--accent);
+                    text-decoration: underline;
+                }
 
-	#fileDropArea {
-	  border: 2.5px dashed var(--accent);
-	  background: #f0f2fa;
-	  border-radius: var(--radius);
-	  padding: 36px 0;
-	  text-align: center;
-	  margin-bottom: 16px;
-	  font-size: 1.15em;
-	  color: var(--accent);
-	  cursor: pointer;
-	  transition: background 0.2s;
-	}
+        section {
+            margin-bottom: 32px;
+        }
 
-	#fileDropArea.dragover {
-	  background: #e3e6f7;
-	}
+        .key-section,
+        .warning-section {
+            background: #f8fafc;
+            border-radius: var(--radius);
+            padding: 18px 16px;
+            border: 1.5px solid var(--border);
+            box-shadow: 0 1px 6px rgba(60,72,101,0.03);
+            margin-bottom: 18px;
+        }
 
-	ul {
-	  list-style: none;
-	  padding: 0;
-	}
+            .key-section h2,
+            .key-section h3 {
+                color: var(--accent);
+                margin-bottom: 10px;
+            }
 
-	li {
-	  margin-bottom: 7px;
-	  font-size: 0.98em;
-	  color: #444;
-	}
+        .warning-section {
+            border: 2px solid var(--danger);
+            background: #ffecec;
+            color: var(--danger-dark);
+        }
 
-	table {
-	  width: 100%;
-	  border-collapse: separate;
-	  border-spacing: 0;
-	  margin-top: 12px;
-	  background: #fff;
-	  border-radius: var(--radius);
-	  box-shadow: 0 1px 4px rgba(60,72,101,0.03);
-	  overflow: hidden;
-	}
+        #fileDropArea {
+            border: 2.5px dashed var(--accent);
+            background: #f0f2fa;
+            border-radius: var(--radius);
+            padding: 36px 0;
+            text-align: center;
+            margin-bottom: 16px;
+            font-size: 1.15em;
+            color: var(--accent);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
 
-	th, td {
-	  border-bottom: 1px solid var(--border);
-	  padding: 10px 6px;
-	  text-align: center;
-	  font-size: 0.98em;
-	}
+            #fileDropArea.dragover {
+                background: #e3e6f7;
+            }
 
-	th {
-	  background: #f0f2fa;
-	  color: var(--accent);
-	  font-weight: 600;
-	}
+        ul {
+            list-style: none;
+            padding: 0;
+        }
 
-	tr:last-child td {
-	  border-bottom: none;
-	}
+        li {
+            margin-bottom: 7px;
+            font-size: 0.98em;
+            color: #444;
+        }
 
-	button {
-	  border: none;
-	  border-radius: var(--radius);
-	  background: var(--accent);
-	  color: #fff;
-	  padding: 10px 20px;
-	  margin: 8px 6px 0 0;
-	  font-size: 1em;
-	  cursor: pointer;
-	  box-shadow: 0 2px 8px rgba(92,107,192,0.04);
-	  transition: background 0.15s;
-	}
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 12px;
+            background: #fff;
+            border-radius: var(--radius);
+            box-shadow: 0 1px 4px rgba(60,72,101,0.03);
+            overflow: hidden;
+        }
 
-	button:hover,
-	button:focus {
-	  background: var(--accent-dark);
-	}
+        th, td {
+            border-bottom: 1px solid var(--border);
+            padding: 10px 6px;
+            text-align: center;
+            font-size: 0.98em;
+        }
 
-	#resetDBBtn {
-	  background: var(--danger);
-	}
+        th {
+            background: #f0f2fa;
+            color: var(--accent);
+            font-weight: 600;
+        }
 
-	#resetDBBtn:hover {
-	  background: var(--danger-dark);
-	}
+        tr:last-child td {
+            border-bottom: none;
+        }
 
-	.export-privkey-btn {
-	  background: #c62828 !important;
-	  color: #fff !important;
-	  border: none;
-	}
+        button {
+            border: none;
+            border-radius: var(--radius);
+            background: var(--accent);
+            color: #fff;
+            padding: 10px 20px;
+            margin: 8px 6px 0 0;
+            font-size: 1em;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(92,107,192,0.04);
+            transition: background 0.15s;
+        }
 
-	.export-privkey-btn:hover,
-	.export-privkey-btn:focus {
-	  background: var(--danger-dark) !important;
-	}
+            button:hover,
+            button:focus {
+                background: var(--accent-dark);
+            }
 
-	input[type="file"] {
-	  margin: 12px 0;
-	}
+        #resetDBBtn {
+            background: var(--danger);
+        }
 
-	input[type="text"],
-	select {
-	  border: 1.2px solid var(--border);
-	  border-radius: var(--radius);
-	  padding: 8px 10px;
-	  margin: 0 10px 10px 0;
-	  font-size: 1em;
-	  background: #fff;
-	}
+            #resetDBBtn:hover {
+                background: var(--danger-dark);
+            }
 
-	.crypto-row {
-	  display: flex;
-	  gap: 24px;
-	  margin-top: 10px;
-	}
+        .export-privkey-btn {
+            background: #c62828 !important;
+            color: #fff !important;
+            border: none;
+        }
 
-	.crypto-row .key-section {
-	  flex: 1 1 0;
-	  min-width: 0;
-	  margin-bottom: 0;
-	}
+            .export-privkey-btn:hover,
+            .export-privkey-btn:focus {
+                background: var(--danger-dark) !important;
+            }
 
-	#exportArea {
-	  width: 100%;
-	  margin-top: 18px;
-	  padding: 14px 12px;
-	  background: #f3f6fc;
-	  border-radius: var(--radius);
-	  min-height: 40px;
-	  font-size: 1em;
-	  overflow-wrap: break-word;
-	  box-sizing: border-box;
-	}
+        input[type="file"] {
+            margin: 12px 0;
+        }
 
-	#spinner {
-	  display: none;
-	  position: fixed;
-	  top: 50%;
-	  left: 50%;
-	  transform: translate(-50%, -50%);
-	  background: #fff;
-	  padding: 28px 32px;
-	  border-radius: var(--radius);
-	  box-shadow: 0 6px 32px rgba(60,72,101,0.18);
-	  font-size: 1.18em;
-	  z-index: 1000;
-	  color: var(--accent);
-      text-align: center;
-      max-width: 80%;
-	}
+        input[type="text"],
+        select {
+            border: 1.2px solid var(--border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            margin: 0 10px 10px 0;
+            font-size: 1em;
+            background: #fff;
+        }
 
-    #exportArea:empty { display: none; }
+        .crypto-row {
+            display: flex;
+            gap: 24px;
+            margin-top: 10px;
+        }
 
-	@media (max-width: 780px) {
-	  main {
-	    padding: 7vw 3vw;
-	  }
-	  table, th, td {
-	    font-size: 0.97em;
-	  }
-	  .crypto-row {
-	    flex-direction: column;
-	    gap: 0;
-	  }
-	  .crypto-row .key-section {
-	    margin-bottom: 18px;
-	  }
-	}
+            .crypto-row .key-section {
+                flex: 1 1 0;
+                min-width: 0;
+                margin-bottom: 0;
+            }
 
-	@media (max-width: 520px) {
-	  main {
-	    padding: 2vw 2vw;
-	  }
-	  h1 {
-	    font-size: 1.45em;
-	  }
-	  .key-section,
-	  .warning-section {
-	    padding: 7vw 3vw;
-	  }
-	  button,
-	  .export-privkey-btn {
-	    width: 100%;
-	    margin-top: 7px;
-	  }
-	  table {
-	    font-size: 0.92em;
-	  }
-	}
-  </style>
+        #exportArea {
+            width: 100%;
+            margin-top: 18px;
+            padding: 14px 12px;
+            background: #f3f6fc;
+            border-radius: var(--radius);
+            min-height: 40px;
+            font-size: 1em;
+            overflow-wrap: break-word;
+            box-sizing: border-box;
+        }
+
+        #spinner {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            padding: 28px 32px;
+            border-radius: var(--radius);
+            box-shadow: 0 6px 32px rgba(60,72,101,0.18);
+            font-size: 1.18em;
+            z-index: 1000;
+            color: var(--accent);
+            text-align: center;
+            max-width: 80%;
+        }
+
+        #exportArea:empty {
+            display: none;
+        }
+
+        @media (max-width: 780px) {
+            main {
+                padding: 7vw 3vw;
+            }
+
+            table, th, td {
+                font-size: 0.97em;
+            }
+
+            .crypto-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+                .crypto-row .key-section {
+                    margin-bottom: 18px;
+                }
+        }
+
+        @media (max-width: 520px) {
+            main {
+                padding: 2vw 2vw;
+            }
+
+            h1 {
+                font-size: 1.45em;
+            }
+
+            .key-section,
+            .warning-section {
+                padding: 7vw 3vw;
+            }
+
+            button,
+            .export-privkey-btn {
+                width: 100%;
+                margin-top: 7px;
+            }
+
+            table {
+                font-size: 0.92em;
+            }
+        }
+    </style>
 </head>
 <body>
-  <main>
-    <div class="lang-switch">
-        <span id="lang-ja">JP</span> / <span id="lang-en">EN</span> / <span id="lang-fr">FR</span> / <span id="lang-lb">LB</span>
-    </div>
-
-    <div id="magicLinkWizard" style="display:none; text-align:center; padding: 20px;">
-        <h2 id="wizardTitle" style="color:var(--accent);"></h2>
-        <p id="wizardDesc" style="margin: 20px 0; font-size:1.1em;"></p>
-        
-		<div id="wizardStep1">
-			<div style="margin-bottom: 20px; text-align: left; max-width: 300px; margin-left: auto; margin-right: auto;">
-				<label for="wizardEmailInput" style="display: block; font-size: 0.9em; color: #555; margin-bottom: 5px;" data-i18n="wizard_email_label">あなたのメールアドレス（確認用）</label>
-				<input type="email" id="wizardEmailInput" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1.2px solid var(--border); border-radius: var(--radius);" placeholder="example@example.com">
-			</div>
-			<button id="wizardStartBtn" style="font-size:1.2em; padding:15px 30px; width:100%; max-width:300px;"></button>
-		</div>
-
-        <div id="wizardResult" style="display:none; margin-top:20px; background:#f0f4c3; padding:20px; border-radius:14px;">
-            <h3 id="wizardDoneMsg" style="color:#2e7d32;"></h3>
-            <p id="wizardReplyInst"></p>
-            <input type="text" id="wizardReplyUrl" readonly style="width:90%; padding:10px; margin-bottom:10px;">
-            <br>
-            <button id="wizardCopyBtn"></button>
+    <main>
+        <div class="lang-switch">
+            <span id="lang-ja">JP</span> / <span id="lang-en">EN</span> / <span id="lang-fr">FR</span> / <span id="lang-lb">LB</span>
         </div>
-    </div>
 
-    <div id="main-app-container">
-        <h1>PubliCrypt</h1>
-        <div data-i18n="app_desc">
-        </div>
-        <div style="margin-bottom:16px;">
-        <a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank" data-i18n="link_manual">簡単な説明はこちらをごらんください</a>
-        </div>
-        <div id="spinner" data-i18n="processing">処理中...</div>
+        <div id="magicLinkWizard" style="display:none; text-align:center; padding: 20px;">
+            <h2 id="wizardTitle" style="color:var(--accent);"></h2>
+            <p id="wizardDesc" style="margin: 20px 0; font-size:1.1em;"></p>
 
-        <section id="fileSection">
-        <h2 data-i18n="target_files_header">暗号化／復号の対象ファイル</h2>
-        <div id="fileDropArea" data-i18n="drop_area_text">ここにファイルをドロップ</div>
-        <input type="file" id="fileSelect" multiple>
-        <ul id="fileList"></ul>
-
-        <div class="crypto-row">
-            <div class="key-section" id="encryptSection">
-            <h2 data-i18n="encrypt_title">暗号化</h2>
-            <div id="pubkey-file-select-block">
-                <div data-i18n="encrypt_instruction">暗号化で使用する公開鍵のファイルを読み込んでください</div>
-                <h3 data-i18n="pubkey_select_header">公開鍵選択 (.pubkey XML)</h3>
-                <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
-            </div>
-            <button id="encryptBtn" data-i18n="encrypt_btn">暗号化</button>
-            <ul id="pubKeyList"></ul>
-            </div>
-
-            <div class="decrypt-block">
-                <div class="key-section">
-                <h2 data-i18n="decrypt_title">復号</h2>
-                <div data-i18n="decrypt_instruction">秘密鍵は鍵一覧から自動選択されます</div>
-                <button id="decryptBtn" data-i18n="decrypt_btn">復号</button>
+            <div id="wizardStep1">
+                <div style="margin-bottom: 20px; text-align: left; max-width: 300px; margin-left: auto; margin-right: auto;">
+                    <label for="wizardEmailInput" style="display: block; font-size: 0.9em; color: #555; margin-bottom: 5px;" data-i18n="wizard_email_label">あなたのメールアドレス（確認用）</label>
+                    <input type="email" id="wizardEmailInput" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1.2px solid var(--border); border-radius: var(--radius);" placeholder="example@example.com">
                 </div>
+                <button id="wizardStartBtn" style="font-size:1.2em; padding:15px 30px; width:100%; max-width:300px;"></button>
+            </div>
+
+            <div id="wizardResult" style="display:none; margin-top:20px; background:#f0f4c3; padding:20px; border-radius:14px;">
+                <h3 id="wizardDoneMsg" style="color:#2e7d32;"></h3>
+                <p id="wizardReplyInst"></p>
+                <input type="text" id="wizardReplyUrl" readonly style="width:90%; padding:10px; margin-bottom:10px;">
+                <br>
+                <button id="wizardCopyBtn"></button>
             </div>
         </div>
-        </section>
 
-        <section id="privKeyImport">
-        <div class="key-section">
-            <h2 data-i18n="privkey_import_header">秘密鍵インポート (.pvtkey XML)</h2>
-            <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
-            <ul id="privKeyList"></ul>
-        </div>
-        </section>
-
-        <section id="keyManagement">
-        <div class="key-section">
-            <h2 data-i18n="key_mgmt_header">鍵管理</h2>
-            <div style="margin-bottom:10px;">
-            <label for="keyNameInput" data-i18n="key_name_label">鍵名 (英数字、_, -, @, . のみ): </label>
-            <input type="text" id="keyNameInput">
-            <select id="keyAlgorithmSelect">
-                <option value="X25519" data-i18n="algo_x25519">楕円曲線 (X25519)</option>
-                <option value="EC" data-i18n="algo_ec">楕円曲線 (ECDH / P-521)</option>
-            </select>
-            <button id="generateKeyButton" data-i18n="generate_btn">鍵生成</button>
+        <div id="main-app-container">
+            <h1>PubliCrypt</h1>
+            <div data-i18n="app_desc">
             </div>
-            <div>
-            <h3 data-i18n="key_list_header">鍵一覧</h3>
-            <table id="keyTable">
-                <thead>
-                <tr>
-                    <th data-i18n="col_keyname">鍵名</th>
-                    <th data-i18n="col_type">種別</th>
-                    <th data-i18n="col_info">鍵情報</th>
-                    <th data-i18n="col_operation">操作</th>
-                </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+            <div style="margin-bottom:16px;">
+                <a href="https://note.com/maclir_cala/n/n170b2f13c083" target="_blank" data-i18n="link_manual">簡単な説明はこちらをごらんください</a>
             </div>
-        </div>
-        </section>
+            <div id="spinner" data-i18n="processing">処理中...</div>
 
-        <section id="magicLinkSection" class="key-section" style="border-color: #5c6bc0; background: #e8eaf6;">
-          <h2 data-i18n="magic_link_header">マジックリンク (簡単鍵交換)</h2>
-          <p data-i18n="magic_link_desc" style="margin-bottom:12px;">相手にURLを送るだけで、相手の公開鍵を簡単に受け取ることができます。</p>
-          <button id="createMagicLinkBtn" data-i18n="btn_create_magic_link">鍵交換リクエストURLを作成</button>
-        </section>
+            <section id="fileSection">
+                <h2 data-i18n="target_files_header">暗号化／復号の対象ファイル</h2>
+                <div id="fileDropArea" data-i18n="drop_area_text">ここにファイルをドロップ</div>
+                <input type="file" id="fileSelect" multiple>
+                <ul id="fileList"></ul>
 
-        <div id="exportArea"></div>
-	<section id="resetSection" class="warning-section">
-            <h2 data-i18n="warning_header">取り扱い注意！</h2>
-            <p data-i18n="warning_text">
-                以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
-                この操作は元に戻せませんので、十分に注意してください。
-            </p>
-            <button id="resetDBBtn" data-i18n="reset_db_btn">鍵一覧初期化</button>
-        </section>
+                <div class="crypto-row">
+                    <div class="key-section" id="encryptSection">
+                        <h2 data-i18n="encrypt_title">暗号化</h2>
+                        <div id="pubkey-file-select-block">
+                            <div data-i18n="encrypt_instruction">暗号化で使用する公開鍵のファイルを読み込んでください</div>
+                            <h3 data-i18n="pubkey_select_header">公開鍵選択 (.pubkey XML)</h3>
+                            <input type="file" id="pubKeyInput" accept=".pubkey" multiple>
+                        </div>
+                        <button id="encryptBtn" data-i18n="encrypt_btn">暗号化</button>
+                        <ul id="pubKeyList"></ul>
+                    </div>
+
+                    <div class="decrypt-block">
+                        <div class="key-section">
+                            <h2 data-i18n="decrypt_title">復号</h2>
+                            <div data-i18n="decrypt_instruction">秘密鍵は鍵一覧から自動選択されます</div>
+                            <button id="decryptBtn" data-i18n="decrypt_btn">復号</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="privKeyImport">
+                <div class="key-section">
+                    <h2 data-i18n="privkey_import_header">秘密鍵インポート (.pvtkey XML)</h2>
+                    <input type="file" id="privKeyInput" accept=".pvtkey" multiple>
+                    <ul id="privKeyList"></ul>
+                </div>
+            </section>
+
+            <section id="keyManagement">
+                <div class="key-section">
+                    <h2 data-i18n="key_mgmt_header">鍵管理</h2>
+                    <div style="margin-bottom:10px;">
+                        <label for="keyNameInput" data-i18n="key_name_label">鍵名 (英数字、_, -, @, . のみ): </label>
+                        <input type="text" id="keyNameInput">
+                        <select id="keyAlgorithmSelect">
+                            <option value="X25519" data-i18n="algo_x25519">楕円曲線 (X25519)</option>
+                            <option value="EC" data-i18n="algo_ec">楕円曲線 (ECDH / P-521)</option>
+                        </select>
+                        <button id="generateKeyButton" data-i18n="generate_btn">鍵生成</button>
+                    </div>
+                    <div>
+                        <h3 data-i18n="key_list_header">鍵一覧</h3>
+                        <table id="keyTable">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="col_keyname">鍵名</th>
+                                    <th data-i18n="col_type">種別</th>
+                                    <th data-i18n="col_info">鍵情報</th>
+                                    <th data-i18n="col_operation">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="magicLinkSection" class="key-section" style="border-color: #5c6bc0; background: #e8eaf6;">
+                <h2 data-i18n="magic_link_header">マジックリンク (簡単鍵交換)</h2>
+                <p data-i18n="magic_link_desc" style="margin-bottom:12px;">相手にURLを送るだけで、相手の公開鍵を簡単に受け取ることができます。</p>
+                <button id="createMagicLinkBtn" data-i18n="btn_create_magic_link">鍵交換リクエストURLを作成</button>
+            </section>
+
+            <div id="exportArea"></div>
+            <section id="resetSection" class="warning-section">
+                <h2 data-i18n="warning_header">取り扱い注意！</h2>
+                <p data-i18n="warning_text">
+                    以下の操作は、<strong>すべての鍵情報を削除</strong>します。<br>
+                    この操作は元に戻せませんので、十分に注意してください。
+                </p>
+                <button id="resetDBBtn" data-i18n="reset_db_btn">鍵一覧初期化</button>
+            </section>
         </div> <div id="UI-init" style="text-align: center; margin-top: 20px;">
-        <button id="resetUiBtn" style="background:#777;color:#fff;" data-i18n="reset_ui_btn">画面を初期化する</button>
-        <button id="reloadURLBtn" style="background:#777;color:#fff;" data-i18n="reload_url_btn">URL公開鍵を読み直す</button>
-    </div>
+            <button id="resetUiBtn" style="background:#777;color:#fff;" data-i18n="reset_ui_btn">画面を初期化する</button>
+            <button id="reloadURLBtn" style="background:#777;color:#fff;" data-i18n="reload_url_btn">URL公開鍵を読み直す</button>
+            <button id="exportUrlPubkeyBtn" style="background:#777;color:#fff; display:none;" data-i18n="export_url_pubkey_btn">URLの公開鍵を保存</button>
+        </div>
 
-  </main>
-  <script src="i18n.js"></script>
-  <script src="popup.js"></script>
+    </main>
+    <script src="i18n.js"></script>
+    <script src="popup.js"></script>
 </body>
 </html>
