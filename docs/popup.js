@@ -696,6 +696,14 @@ document.getElementById('pubKeyInput').addEventListener('change', async (e) => {
             // 1. XMLから公開鍵オブジェクトをインポート
             const pubKey = await importPublicKeyFromXmlUnified(text, file.name);
 
+            // 【追加】すでに同じフィンガープリントの公開鍵が読み込まれていないか確認
+            const isDuplicate = encryptionPublicKeys.some(existingKey => existingKey.fingerprint === pubKey.fingerprint);
+
+            if (isDuplicate) {
+                // すでに読み込み済みの場合はスキップする
+                continue;
+            }
+
             // 2. 暗号化対象の鍵リスト（配列）に追加
             encryptionPublicKeys.push(pubKey);
 
